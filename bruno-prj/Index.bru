@@ -1,13 +1,17 @@
 meta {
-  name: Authorize
+  name: Index
   type: http
-  seq: 2
+  seq: 1
 }
 
 get {
-  url: {{baseurl}}/authorize
+  url: {{baseurl}}
   body: none
   auth: inherit
+}
+
+assert {
+  res.body: eq Hello from OICD-Server
 }
 
 settings {
