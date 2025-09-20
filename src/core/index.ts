@@ -10,5 +10,6 @@ type AuthorizeRequest = typeof AuthorizeRequest.static;
 
 export const core = new Elysia().get(
   "/authorize",
-  async ({ query: AuthorizeRequest }) => {}
+  async ({ query: AuthorizeRequest }) =>
+    `this should load a form for the user to login, than give consents and return to the redirect_uri`
 );
