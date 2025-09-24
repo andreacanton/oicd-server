@@ -9,12 +9,17 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@types/bun": "^1.2.22"
+    "@types/bcryptjs": "^3.0.0",
+    "@types/bun": "^1.2.22",
+    "@types/jsonwebtoken": "^9.0.10"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
-    "elysia": "^1.4.6"
+    "bcryptjs": "^3.0.2",
+    "crypto-js": "^4.2.0",
+    "jose": "^6.1.0",
+    "jsonwebtoken": "^9.0.2"
   }
 }
