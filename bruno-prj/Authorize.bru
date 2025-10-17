@@ -5,9 +5,26 @@ meta {
 }
 
 get {
-  url: {{baseurl}}/authorize
+  url: {{baseurl}}/authorize?client_id=sample-client&response_type=code&redirect_uri=http://localhost:3001/callback&state={{state}}
   body: none
   auth: inherit
+}
+
+params:query {
+  client_id: sample-client
+  response_type: code
+  redirect_uri: http://localhost:3001/callback
+  state: {{state}}
+}
+
+vars:pre-request {
+  : 
+}
+
+script:pre-request {
+  const nanoid = require('nanoid');
+  const state = nanoid.nanoid();
+  bru.setVar("state", state)
 }
 
 settings {
