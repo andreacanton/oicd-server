@@ -1,0 +1,35 @@
+meta {
+  name: Discovery - Well Known Configuration
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseurl}}/.well-known/openid-configuration
+  body: none
+  auth: inherit
+}
+
+vars:post-response {
+  authorization_endpoint: res.body.authorization_endpoint
+  token_endpoint: res.body.token_endpoint
+  userinfo_endpoint: res.body.userinfo_endpoint
+  jwks_uri: res.body.jwks_uri
+}
+
+assert {
+  res.body.issuer: isNotEmpty
+  res.body.authorization_endpoint: isNotEmpty
+  res.body.token_endpoint: isNotEmpty
+  res.body.userinfo_endpoint: isNotEmpty
+  res.body.jwks_uri: isNotEmpty
+  res.body.response_types_supported: contains code
+  res.body.subject_types_supported: contains public
+  res.body.id_token_signing_alg_values_supported: contains RS256
+  res.body.scopes_supported: contains openid
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
