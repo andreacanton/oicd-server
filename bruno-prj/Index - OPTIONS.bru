@@ -11,7 +11,6 @@ options {
 }
 
 assert {
-  res.body: eq Hello from OIDC server\n
   res.headers['access-control-allow-origin']: eq *
   res.headers['access-control-allow-methods']: eq GET, POST, OPTIONS
   res.headers['access-control-allow-headers']: eq Content-Type, Authorization
@@ -19,4 +18,5 @@ assert {
 
 settings {
   encodeUrl: true
+  timeout: 0
 }

@@ -36,7 +36,7 @@ serve({
   async fetch(req) {
     const url = new URL(req.url);
     const path = url.pathname;
-    const method = url.method;
+    const method = req.method;
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -47,20 +47,36 @@ serve({
     if (method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
     }
+
+    if (path === "/") {
+      return new Response(`Hello from OIDC server\n`, {
+        headers: corsHeaders,
+      });
+    }
+
     if (path === "/.well-known/openid-configuration") {
-      return new Response(wellKnownConfig, {
+      return new Response(JSON.stringify(wellKnownConfig), {
         headers: jsonHeaders,
       });
     }
+
     if (path === "/.well-known/jwks.json") {
-      return new Response({
-        keys: [{ ...jwk, alg: "RS256", use: "sig", kid: "1" }],
-      }, { headers: jsonHeaders });
+      return new Response(
+        JSON.stringify({
+          keys: [{ ...jwk, alg: "RS256", use: "sig", kid: "1" }],
+        }),
+        { headers: jsonHeaders },
+      );
     }
 
-    return new Response("Hello from OIDC server\n", { headers: corsHeaders });
+    if (path === "/authorize" && method === "GET") {
+    }
+    return new Response("Not found", { status: 404, headers: corsHeaders });
   },
 });
 
 console.info(`Serving OIDC at ${config.baseUrl}`);
-console.info(`Well known configuration:`, jwk);
+console.info(
+  `Well known configuration:`,
+  JSON.stringify(wellKnownConfig, null, 2),
+);
