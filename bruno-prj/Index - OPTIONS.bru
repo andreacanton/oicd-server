@@ -1,0 +1,22 @@
+meta {
+  name: Index - OPTIONS
+  type: http
+  seq: 3
+}
+
+options {
+  url: {{baseurl}}
+  body: none
+  auth: inherit
+}
+
+assert {
+  res.body: eq Hello from OIDC server\n
+  res.headers['access-control-allow-origin']: eq *
+  res.headers['access-control-allow-methods']: eq GET, POST, OPTIONS
+  res.headers['access-control-allow-headers']: eq Content-Type, Authorization
+}
+
+settings {
+  encodeUrl: true
+}
