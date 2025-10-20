@@ -6,7 +6,7 @@ import { json } from "stream/consumers";
 const config = {
   baseUrl: new URL("http://localhost:3000"),
 } as { baseUrl: URL };
-const salt = crypto.randomBytes(16).toString("hex");
+const salt = generateCode();
 
 // OIDC Discovery endpoint
 const wellKnownConfig = {
@@ -45,11 +45,16 @@ const users = new Map([
     id: "user-1",
     username: "testuser",
     email: "test@example.com",
-    password: hashPassword("password123"),
+    passwordHash: hashPassword("password123"),
   }],
 ]);
 const authCodes = new Map();
 const accessTokens = new Map();
+
+// Generate a random string
+function generateCode(): string {
+  return crypto.randomBytes(16).toString("hex");
+}
 
 // Password hashing
 // return the hashed password from using the salt in the configuration
@@ -138,6 +143,42 @@ serve({
         "Content-Type": "text/html",
         ...corsHeaders,
       });
+    }
+
+    // POST authorize
+    if (path === "/authorize" && method === "POST") {
+      const formData = await req.formData();
+      const username = formData.get("username") as string;
+      const password = formData.get("password") as string;
+      const clientId = formData.get("client_id") as string;
+      const redirectUri = formData.get("redirect_uri") as string;
+      const codeChallenge = formData.get("code_challenge") as string;
+      const codeChallengeMethod = formData.get(
+        "code_challenge_method",
+      ) as string;
+      const state = formData.get("state") as string;
+
+      const user = users.get(username);
+      if (!user || !user.passwordHash !== hashPassword(password)) {
+        return new Response("Invalid credentials", { status: 401 });
+      }
+
+      const code = generateCode();
+      const expiresAt = Date.now() + 60000; // 60 seconds
+      authCodes.set(code, {
+        userId: user.id,
+        clientId,
+        redirectUri,
+        codeChallenge,
+        codeChallengeMethod,
+        expiresAt,
+      });
+
+      const redirectUrl = new URL(redirectUri);
+      redirectUrl.searchParams.set("code", code);
+      if (state) redirectUrl.searchParams.set("state", state);
+
+      return Response.redirect(redirectUrl.toString(), 302);
     }
     return new Response("Not found", { status: 404, headers: corsHeaders });
   },
