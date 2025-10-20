@@ -5,7 +5,8 @@ import { json } from "stream/consumers";
 // Configuration
 const config = {
   baseUrl: new URL("http://localhost:3000"),
-} as { baseUrl: URL };
+  sessionDuration: 15 * 60 * 1000, // 15 minutes
+} as { baseUrl: URL; sessionDuration: number };
 const salt = generateCode();
 
 // OIDC Discovery endpoint
@@ -63,6 +64,14 @@ function hashPassword(password: string): string {
     "hex",
   );
   return hash;
+}
+
+
+// method to verify the code challenge with SHA256
+function verifySHA256(codeChallenge: string, codeVerifier: string): boolean {
+  const hash = crypto.createHash("sha512").update(codeVerifier).digest();
+  const base64Hash = Buffer.from(hash).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  return codeChallenge === base64Hash;
 }
 
 serve({
@@ -164,7 +173,7 @@ serve({
       }
 
       const code = generateCode();
-      const expiresAt = Date.now() + 60000; // 60 seconds
+      const expiresAt = Date.now() + config.sessionDuration; // 60 seconds
       authCodes.set(code, {
         userId: user.id,
         clientId,
@@ -179,6 +188,71 @@ serve({
       if (state) redirectUrl.searchParams.set("state", state);
 
       return Response.redirect(redirectUrl.toString(), 302);
+    }
+
+    // POST Token endpoint
+    if (path === "/token" && method === "POST") {
+      const body = await req.json() as {
+        grant_type: string;
+        code: string;
+        client_id: string;
+        client_secret: string;
+        redirect_uri: string;
+        code_verifier: string;
+      };
+      const {
+        grant_type,
+        code,
+        client_id,
+        client_secret,
+        redirect_uri,
+        code_verifier,
+      } = body;
+
+      if (grant_type !== "authorization_code") {
+        return new Response(
+          JSON.stringify({ error: "unsupported_grant_type" }),
+          { status: 400, headers: jsonHeaders },
+        );
+      }
+      // client_secret is not required
+      const client = clients.get(client_id);
+      if (!client) {
+        return new Response(JSON.stringify({ error: "invalid_client" }), {
+          status: 401,
+          headers: jsonHeaders,
+        });
+      }
+
+      const authCode = authCodes.get(code);
+      if (
+        !authCode || authCode.expiresAt < Date.now() ||
+        authCode.redirectUri !== redirect_uri
+      ) {
+        return new Response(
+          JSON.stringify({
+            error: "invalid_grant",
+          }),
+          { status: 400, headers: jsonHeaders },
+        );
+      }
+
+      if (!code_verifier)
+        return new Response(JSON.stringify({ error: "invalid_grant", error_description: "code_verifier required" }), { status: 400, headers: jsonHeaders });
+
+      const method = authCode.codeChallengeMethod || "S256";
+      const verified = method === "S256" ? verifySHA256(authCode.codeChallenge, code_verifier) : authCode.CodeChallenge === code_verifier;
+
+      if (!verified)
+        return new Response(JSON.stringify({ error: "invalid_grant", error_description: "invalid code_verifier" }), { status: 400, headers: jsonHeaders });
+
+      authCode.delete(code);
+
+      const accessToken = createAccessToken(authCode.userId, client_id);
+      const idToken = createIdToken(authCode.userId, client_id);
+
+      return new Response(JSON.stringify({ access_token: accessToken, id_token: idToken, token_type: "Bearer" expires_in: config.sessionDuration }), { headers: jsonHeaders });
+
     }
     return new Response("Not found", { status: 404, headers: corsHeaders });
   },
