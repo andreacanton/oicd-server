@@ -1,0 +1,35 @@
+meta {
+  name: Userinfo
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseurl}}/userinfo
+  body: none
+  auth: oauth2
+}
+
+auth:oauth2 {
+  grant_type: authorization_code
+  callback_url: http://localhost:3001/callback
+  authorization_url: {{authorization_endpoint}}
+  access_token_url: {{token_endpoint}}
+  refresh_token_url: 
+  client_id: {{client_id}}
+  client_secret: {{client_secret}}
+  scope: openid email profile
+  state: 
+  pkce: true
+  credentials_placement: body
+  credentials_id: credentials
+  token_placement: header
+  token_header_prefix: Bearer
+  auto_fetch_token: true
+  auto_refresh_token: false
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

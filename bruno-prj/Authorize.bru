@@ -5,9 +5,21 @@ meta {
 }
 
 get {
-  url: {{jwks_uri}}
+  url: {{authorization_endpoint}}?client_id={{client_id}}&redirect_uri={{redirect_uri}}&code_challenge={{code_challenge}}
   body: none
   auth: inherit
+}
+
+params:query {
+  client_id: {{client_id}}
+  redirect_uri: {{redirect_uri}}
+  code_challenge: {{code_challenge}}
+}
+
+script:pre-request {
+  const nanoid = require('nanoid');
+  
+  bru.setVar("code_challenge",nanoid.nanoid(16))
 }
 
 settings {
