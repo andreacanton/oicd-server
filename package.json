@@ -9,17 +9,11 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^3.0.0",
-    "@types/bun": "^1.2.22",
-    "@types/jsonwebtoken": "^9.0.10"
+    "@types/bun": "^1.2.22"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
-    "bcryptjs": "^3.0.2",
-    "crypto-js": "^4.2.0",
-    "jose": "^6.1.0",
-    "jsonwebtoken": "^9.0.2"
   }
 }
