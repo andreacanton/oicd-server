@@ -4,7 +4,7 @@ import * as crypto from "crypto";
 // Configuration
 const config = {
   baseUrl: new URL("http://localhost:3000"),
-  sessionDuration: 15 * 60 * 1000, // 15 minutes
+  sessionDuration: 15 * 60,  // 15 minutes
 } as { baseUrl: URL; sessionDuration: number };
 const salt = generateCode();
 
@@ -61,7 +61,16 @@ const usersById = new Map<string, User>([
   ["user-1", user],
 ]);
 
-const authSessions = new Map();
+type AuthSession = {
+  userId: string;
+  clientId: string;
+  redirectUri: string;
+  codeChallenge: string;
+  codeChallengeMethod: string;
+  expiresAt: number;
+};
+
+const authSessions = new Map<string, AuthSession>();
 
 // Generate a random string
 function generateCode(): string {
@@ -85,14 +94,14 @@ function base64UrlEncode(buffer: Uint8Array | string): string {
 }
 
 function base64UrlDecode(encoded: string): Buffer {
-  const padding = "=".repeat((4 - str.length % 4) % 4);
+  const padding = "=".repeat((4 - encoded.length % 4) % 4);
   const base64 = (encoded + padding).replace(/\-/g, "+").replace(/\_/g, "/");
   return Buffer.from(base64, "base64");
 }
 
 // method to verify the code challenge with SHA256
 function verifySHA256(codeChallenge: string, codeVerifier: string): boolean {
-  const hash = crypto.createHash("sha512").update(codeVerifier).digest();
+  const hash = crypto.createHash("sha256").update(codeVerifier).digest();
   return codeChallenge === base64UrlEncode(hash);
 }
 
@@ -126,11 +135,12 @@ function verifyJWT(token: string): any {
       publicKey,
       signature,
     );
+    console.log("is valid", isValid);
 
     if (!isValid) return null;
 
     // decode payload
-    const payload = JSON.parse(baseUrlDecode(payloadEncoded).toString("utf8"));
+    const payload = JSON.parse(base64UrlDecode(payloadEncoded).toString("utf8"));
 
     // Check expiration
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
@@ -378,7 +388,6 @@ serve({
         ? verifySHA256(session.codeChallenge, code_verifier)
         : session.CodeChallenge === code_verifier;
 
-      console.log(method, session.CodeChallenge, code_verifier);
       if (!verified) {
         return new Response(
           JSON.stringify({
@@ -423,6 +432,7 @@ serve({
         });
       }
       const payload = verifyJWT(authHeader.substring(7));
+      console.log(payload);
       if (payload === null || !payload.sub) {
         return new Response(JSON.stringify({ error: "invalid_token" }), {
           status: 401,
