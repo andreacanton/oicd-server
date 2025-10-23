@@ -4,7 +4,7 @@ import * as crypto from "crypto";
 // Configuration
 const config = {
   baseUrl: new URL("http://localhost:3000"),
-  sessionDuration: 15 * 60,  // 15 minutes
+  sessionDuration: 15 * 60, // 15 minutes
 } as { baseUrl: URL; sessionDuration: number };
 const salt = generateCode();
 
@@ -140,7 +140,9 @@ function verifyJWT(token: string): any {
     if (!isValid) return null;
 
     // decode payload
-    const payload = JSON.parse(base64UrlDecode(payloadEncoded).toString("utf8"));
+    const payload = JSON.parse(
+      base64UrlDecode(payloadEncoded).toString("utf8"),
+    );
 
     // Check expiration
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
@@ -315,32 +317,29 @@ serve({
         grant_type: string;
         code: string;
         client_id: string;
-        client_secret: string;
         redirect_uri: string;
         code_verifier: string;
       };
-      let tokenRequest: TokenRequest = null;
+      let tokenRequest: TokenRequest = {} as TokenRequest;
       if (
         req.headers.get("Content-Type") === "application/x-www-form-urlencoded"
       ) {
         const form = await req.formData();
         tokenRequest = {
-          grant_type: form.get("grant_type"),
-          code: form.get("code"),
-          client_id: form.get("client_id"),
-          client_secret: form.get("client_secret"),
-          redirect_uri: form.get("redirect_uri"),
-          code_verifier: form.get("code_verifier"),
+          grant_type: form.get("grant_type") as string,
+          code: form.get("code") as string,
+          client_id: form.get("client_id") as string,
+          redirect_uri: form.get("redirect_uri") as string,
+          code_verifier: form.get("code_verifier") as string,
         };
       } else {
-        tokenRequest = await req.json();
+        tokenRequest = await req.json() as TokenRequest;
       }
 
       const {
         grant_type,
         code,
         client_id,
-        client_secret,
         redirect_uri,
         code_verifier,
       } = tokenRequest;
