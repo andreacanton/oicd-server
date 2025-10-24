@@ -135,7 +135,6 @@ function verifyJWT(token: string): any {
       publicKey,
       signature,
     );
-    console.log("is valid", isValid);
 
     if (!isValid) return null;
 
@@ -149,7 +148,6 @@ function verifyJWT(token: string): any {
       return null;
     }
 
-    console.log("payload expiration is valid");
     // Check issuer
     if (payload.iss !== wellKnownConfig.issuer.toString()) {
       return null;
@@ -238,10 +236,36 @@ serve({
       const codeChallenge = url.searchParams.get("code_challenge");
       const codeChallengeMethod = url.searchParams.get("code_challenge_method");
       const state = url.searchParams.get("state");
+      const responseType = url.searchParams("response_type");
+
+      if (responseType !== "code") {
+        return new Response(
+          "Only 'code' response_type is supported (OAuth 2.1)",
+          { status: 400 },
+        );
+      }
 
       if (!clientId || !redirectUri || !codeChallenge) {
         return new Response("Missing required parameters", { status: 400 });
       }
+
+      if (codeChallengeMethod !== "S256") {
+        return new Response(
+          "Only S256 code_challenge_method is supported (OAuth 2.1 requirement)",
+          { status: 400 },
+        );
+      }
+
+      // the code challenge should be of 43 chars exaclty.
+      // this is explained in the RFC 7636 section 4.1
+      // https://www.rfc-editor.org/rfc/rfc7636.html
+      if (codeChallengeMethod === "S256" && codeChallenge.length !== 43) {
+        return new Response(
+          "Invalid code_challenge: S256 method requires exactly 43 characters",
+          { status: 400 },
+        );
+      }
+
       if (
         !clients.get(clientId) ||
         !clients.get(clientId)?.redirect_uris.includes(redirectUri)
@@ -276,7 +300,10 @@ serve({
     }
 
     // POST authorize
-    if (path === "/authorize" && method === "POST") {
+    if (
+      path === wellKnownConfig.authorization_endpoint.pathname &&
+      method === "POST"
+    ) {
       const formData = await req.formData();
       const username = formData.get("username") as string;
       const password = formData.get("password") as string;
