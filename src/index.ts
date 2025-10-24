@@ -37,7 +37,7 @@ const clients = new Map([
   ["sample-client", {
     client_id: "sample-client",
     client_secret: "sample-secret",
-    redirect_uris: ["http://localhost:3001/callback"],
+    redirect_uris: ["http://localhost:3001"],
   }],
 ]);
 
@@ -236,7 +236,7 @@ serve({
       const codeChallenge = url.searchParams.get("code_challenge");
       const codeChallengeMethod = url.searchParams.get("code_challenge_method");
       const state = url.searchParams.get("state");
-      const responseType = url.searchParams("response_type");
+      const responseType = url.searchParams.get("response_type");
 
       if (responseType !== "code") {
         return new Response(

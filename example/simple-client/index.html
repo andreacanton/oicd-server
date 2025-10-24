@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OAuth 2.1 + PKCE Demo Client</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+
+    .container {
+      background: white;
+      padding: 30px;
+      border: 1px solid #ddd;
+    }
+
+    h1 {
+      margin: 0 0 10px 0;
+      font-size: 24px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 20px;
+    }
+
+    .status {
+      padding: 10px;
+      margin-bottom: 20px;
+      border: 1px solid #ddd;
+    }
+
+    .status.logged-out {
+      background: #fee;
+      border-color: #fcc;
+    }
+
+    .status.logged-in {
+      background: #efe;
+      border-color: #cfc;
+    }
+
+    .status.processing {
+      background: #ffd;
+      border-color: #ffb;
+    }
+
+    button {
+      background: #0066cc;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      cursor: pointer;
+      width: 100%;
+      margin-bottom: 10px;
+    }
+
+    button:hover {
+      background: #0052a3;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    button.secondary {
+      background: #666;
+    }
+
+    button.secondary:hover {
+      background: #555;
+    }
+
+    .section {
+      margin-top: 20px;
+      padding: 15px;
+      background: #fafafa;
+      border: 1px solid #ddd;
+    }
+
+    .section h3 {
+      margin-top: 0;
+      font-size: 16px;
+    }
+
+    .info-row {
+      margin: 10px 0;
+    }
+
+    .info-label {
+      font-weight: bold;
+      display: inline-block;
+      width: 100px;
+    }
+
+    .info-value {
+      font-family: monospace;
+      color: #333;
+    }
+
+    .log-container {
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      padding: 15px;
+      margin-top: 20px;
+      max-height: 400px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 13px;
+    }
+
+    .log-entry {
+      margin: 5px 0;
+      padding: 5px;
+    }
+
+    .log-entry.step {
+      color: #0066cc;
+    }
+
+    .log-entry.success {
+      color: #0a0;
+    }
+
+    .log-entry.error {
+      color: #c00;
+    }
+
+    .log-entry.data {
+      color: #666;
+    }
+
+    .how-it-works ol {
+      line-height: 1.8;
+    }
+
+    .how-it-works code {
+      background: #e8e8e8;
+      padding: 2px 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>OAuth 2.1 Demo Client</h1>
+    <p class="subtitle">Authorization Code Flow + PKCE</p>
+
+    <div id="status" class="status logged-out">
+      Not authenticated
+    </div>
+
+    <div id="auth-section">
+      <button id="login-btn" onclick="startOAuth()">
+        Start OAuth 2.1 Flow
+      </button>
+    </div>
+
+    <div id="user-section" style="display: none;">
+      <div class="section">
+        <h3>User Information</h3>
+        <div class="info-row">
+          <span class="info-label">User ID:</span>
+          <span class="info-value" id="user-id">-</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Name:</span>
+          <span class="info-value" id="user-name">-</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Email:</span>
+          <span class="info-value" id="user-email">-</span>
+        </div>
+      </div>
+      <button class="secondary" onclick="logout()">Logout</button>
+    </div>
+
+    <div class="log-container">
+      <strong>OAuth Flow Logs</strong>
+      <div id="log"></div>
+    </div>
+
+    <div class="section how-it-works">
+      <h3>How OAuth 2.1 + PKCE Works</h3>
+      <ol>
+        <li><strong>Generate PKCE:</strong> Create random <code>code_verifier</code> (43 chars) and SHA256 hash it to get <code>code_challenge</code></li>
+        <li><strong>Authorization Request:</strong> Redirect to server with <code>client_id</code>, <code>redirect_uri</code>, and <code>code_challenge</code></li>
+        <li><strong>User Login:</strong> User authenticates on the authorization server</li>
+        <li><strong>Authorization Code:</strong> Server redirects back with a one-time <code>code</code></li>
+        <li><strong>Token Exchange:</strong> Exchange <code>code</code> + <code>code_verifier</code> for access and ID tokens</li>
+        <li><strong>Access Resources:</strong> Use access token to call protected APIs like <code>/userinfo</code></li>
+      </ol>
+    </div>
+  </div>
+
+  <script>
+    // Configuration
+    const CONFIG = {
+      authServerUrl: 'http://localhost:3000',
+      clientId: 'sample-client',
+      redirectUri: 'http://localhost:3001',
+      scope: 'openid profile email'
+    };
+
+    // State management
+    let state = {
+      codeVerifier: null,
+      state: null,
+      accessToken: null,
+      idToken: null
+    };
+
+    // Logging utility
+    function log(message, type = 'step', data = null) {
+      const logDiv = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      
+      const timestamp = new Date().toLocaleTimeString();
+      let content = `[${timestamp}] ${message}`;
+      
+      if (data) {
+        content += '\n' + JSON.stringify(data, null, 2);
+      }
+      
+      entry.textContent = content;
+      logDiv.appendChild(entry);
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    // Update UI status
+    function updateStatus(message, isLoggedIn, isProcessing = false) {
+      const statusDiv = document.getElementById('status');
+      statusDiv.textContent = message;
+      statusDiv.className = 'status ' + (isProcessing ? 'processing' : (isLoggedIn ? 'logged-in' : 'logged-out'));
+    }
+
+    // PKCE utilities
+    function generateRandomString(length) {
+      const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+      const values = crypto.getRandomValues(new Uint8Array(length));
+      return Array.from(values).map(x => possible[x % possible.length]).join('');
+    }
+
+    async function generateCodeChallenge(codeVerifier) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(codeVerifier);
+      const hash = await crypto.subtle.digest('SHA-256', data);
+      return base64UrlEncode(hash);
+    }
+
+    function base64UrlEncode(arrayBuffer) {
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '');
+    }
+
+    // OAuth flow functions
+    async function startOAuth() {
+      try {
+        updateStatus('Generating PKCE parameters...', false, true);
+        log('Step 1: Generating PKCE parameters', 'step');
+
+        // Generate PKCE parameters
+        state.codeVerifier = generateRandomString(43);
+        state.state = generateRandomString(32);
+        const codeChallenge = await generateCodeChallenge(state.codeVerifier);
+
+        log('PKCE parameters generated', 'success', {
+          codeVerifier: state.codeVerifier.substring(0, 20) + '...',
+          codeVerifierLength: state.codeVerifier.length,
+          codeChallenge: codeChallenge,
+          codeChallengeLength: codeChallenge.length,
+          state: state.state
+        });
+
+        // Store in sessionStorage for callback
+        sessionStorage.setItem('oauth_state', JSON.stringify({
+          codeVerifier: state.codeVerifier,
+          state: state.state
+        }));
+
+        // Build authorization URL
+        const authUrl = new URL(`${CONFIG.authServerUrl}/authorize`);
+        authUrl.searchParams.set('client_id', CONFIG.clientId);
+        authUrl.searchParams.set('redirect_uri', CONFIG.redirectUri);
+        authUrl.searchParams.set('response_type', 'code');
+        authUrl.searchParams.set('scope', CONFIG.scope);
+        authUrl.searchParams.set('state', state.state);
+        authUrl.searchParams.set('code_challenge', codeChallenge);
+        authUrl.searchParams.set('code_challenge_method', 'S256');
+
+        log('Step 2: Redirecting to authorization server', 'step', {
+          url: authUrl.toString(),
+          note: 'User will login on the auth server'
+        });
+
+        // Redirect to authorization server
+        setTimeout(() => {
+          window.location.href = authUrl.toString();
+        }, 1000);
+
+      } catch (error) {
+        log('Error starting OAuth flow: ' + error.message, 'error');
+        updateStatus('Error: ' + error.message, false);
+      }
+    }
+
+    async function handleCallback() {
+      try {
+        updateStatus('Processing authorization callback...', false, true);
+        log('Step 3: Authorization callback received', 'step');
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const returnedState = urlParams.get('state');
+        const error = urlParams.get('error');
+
+        if (error) {
+          throw new Error(`Authorization error: ${error}`);
+        }
+
+        if (!code) {
+          throw new Error('No authorization code received');
+        }
+
+        log('Authorization code received', 'success', {
+          code: code.substring(0, 20) + '...',
+          state: returnedState
+        });
+
+        // Retrieve stored state
+        const storedState = JSON.parse(sessionStorage.getItem('oauth_state') || '{}');
+        
+        // Verify state (CSRF protection)
+        if (returnedState !== storedState.state) {
+          throw new Error('State mismatch - possible CSRF attack');
+        }
+
+        log('State verified (CSRF protection)', 'success');
+        log('Step 4: Exchanging code for tokens', 'step');
+
+        // Exchange code for tokens
+        const tokenResponse = await fetch(`${CONFIG.authServerUrl}/token`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            grant_type: 'authorization_code',
+            code: code,
+            client_id: CONFIG.clientId,
+            client_secret: 'sample-secret',
+            redirect_uri: CONFIG.redirectUri,
+            code_verifier: storedState.codeVerifier
+          })
+        });
+
+        if (!tokenResponse.ok) {
+          const errorData = await tokenResponse.json();
+          throw new Error(`Token exchange failed: ${errorData.error || tokenResponse.statusText}`);
+        }
+
+        const tokens = await tokenResponse.json();
+        state.accessToken = tokens.access_token;
+        state.idToken = tokens.id_token;
+
+        log('Tokens received', 'success', {
+          accessToken: tokens.access_token.substring(0, 30) + '...',
+          idToken: tokens.id_token.substring(0, 30) + '...',
+          tokenType: tokens.token_type,
+          expiresIn: tokens.expires_in
+        });
+
+        // Decode ID token (just for display, normally you'd verify it)
+        const idTokenPayload = JSON.parse(atob(tokens.id_token.split('.')[1]));
+        log('ID Token payload', 'data', idTokenPayload);
+
+        log('Step 5: Fetching user information', 'step');
+
+        // Fetch user info
+        const userInfoResponse = await fetch(`${CONFIG.authServerUrl}/userinfo`, {
+          headers: {
+            'Authorization': `Bearer ${state.accessToken}`
+          }
+        });
+
+        if (!userInfoResponse.ok) {
+          throw new Error('Failed to fetch user info');
+        }
+
+        const userInfo = await userInfoResponse.json();
+        
+        log('User information retrieved', 'success', userInfo);
+        log('OAuth 2.1 flow completed successfully!', 'success');
+
+        // Update UI
+        displayUserInfo(userInfo);
+        updateStatus('Authenticated successfully', true);
+
+        // Clean up URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+
+        // Clear stored state
+        sessionStorage.removeItem('oauth_state');
+
+      } catch (error) {
+        log('Error in callback: ' + error.message, 'error');
+        updateStatus('Authentication failed: ' + error.message, false);
+        
+        // Clean up
+        sessionStorage.removeItem('oauth_state');
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+
+    function displayUserInfo(userInfo) {
+      document.getElementById('auth-section').style.display = 'none';
+      document.getElementById('user-section').style.display = 'block';
+      document.getElementById('user-id').textContent = userInfo.sub;
+      document.getElementById('user-name').textContent = userInfo.name;
+      document.getElementById('user-email').textContent = userInfo.email;
+    }
+
+    function logout() {
+      state = {
+        codeVerifier: null,
+        state: null,
+        accessToken: null,
+        idToken: null
+      };
+      
+      document.getElementById('auth-section').style.display = 'block';
+      document.getElementById('user-section').style.display = 'none';
+      updateStatus('Not authenticated', false);
+      
+      log('Logged out', 'step');
+    }
+
+    // Initialize
+    window.addEventListener('DOMContentLoaded', () => {
+      log('OAuth 2.1 Demo Client initialized', 'success');
+      log('Server: ' + CONFIG.authServerUrl, 'data');
+      log('Client ID: ' + CONFIG.clientId, 'data');
+      log('Ready to start OAuth flow', 'step');
+
+      // Check if we're handling a callback
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.has('code') || urlParams.has('error')) {
+        handleCallback();
+      }
+    });
+  </script>
+</body>
+</html>

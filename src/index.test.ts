@@ -5,7 +5,7 @@ import * as crypto from "crypto";
 const BASE_URL = "http://localhost:3000";
 const TEST_CLIENT_ID = "sample-client";
 const TEST_CLIENT_SECRET = "sample-secret";
-const TEST_REDIRECT_URI = "http://localhost:3001/callback";
+const TEST_REDIRECT_URI = "http://localhost:3001";
 const TEST_USERNAME = "testuser";
 const TEST_PASSWORD = "password123";
 
