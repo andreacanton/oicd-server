@@ -226,7 +226,7 @@ describe("OIDC Server", () => {
       expect(response.status).toBe(401);
     });
 
-    test.todo("POST /authorize with valid credentials redirects with code", async () => {
+    test("POST /authorize with valid credentials redirects with code", async () => {
       const codeChallenge = generateCodeChallenge(generateCodeVerifier());
       const state = generateState();
       const formData = new FormData();
@@ -241,6 +241,7 @@ describe("OIDC Server", () => {
       const response = await fetch(`${BASE_URL}/authorize`, {
         method: "POST",
         redirect: "manual",
+        body: formData,
       });
 
       expect(response.status).toBe(302);
@@ -516,7 +517,7 @@ describe("OIDC Server", () => {
       expect(data.error).toBe("invalid_token");
     });
 
-    test.todo("GET /userinfo with valid token returns user info", async () => {
+    test("GET /userinfo with valid token returns user info", async () => {
       const response = await fetch(`${BASE_URL}/userinfo`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
@@ -529,7 +530,7 @@ describe("OIDC Server", () => {
     });
   });
 
-  describe.todo("PKCE Flow", () => {
+  describe("PKCE Flow", () => {
     test("Complete PKCE flow end-to-end", async () => {
       // 1. Generate PKCE parameters
       const codeVerifier = generateCodeVerifier();

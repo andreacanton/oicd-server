@@ -145,12 +145,13 @@ function verifyJWT(token: string): any {
     );
 
     // Check expiration
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+    if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) {
       return null;
     }
 
+    console.log("payload expiration is valid");
     // Check issuer
-    if (payload.iss !== wellKnownConfig.issuer) {
+    if (payload.iss !== wellKnownConfig.issuer.toString()) {
       return null;
     }
 
@@ -180,7 +181,7 @@ function createIdToken(userId: string, clientId: string) {
 function createAccessToken(
   userId: string,
   clientId: string,
-  scope: string = "openid profile email",
+  scope = "openid profile email",
 ) {
   return createJWT({
     sub: userId,
@@ -245,7 +246,7 @@ serve({
         !clients.get(clientId) ||
         !clients.get(clientId)?.redirect_uris.includes(redirectUri)
       ) {
-        return Response("Invalid client or redirect URI", { status: 400 });
+        return new Response("Invalid client or redirect URI", { status: 400 });
       }
 
       const html = `<!DOCTYPE html>
@@ -385,7 +386,7 @@ serve({
       const method = session.codeChallengeMethod || "S256";
       const verified = method === "S256"
         ? verifySHA256(session.codeChallenge, code_verifier)
-        : session.CodeChallenge === code_verifier;
+        : session.codeChallenge === code_verifier;
 
       if (!verified) {
         return new Response(
@@ -431,7 +432,6 @@ serve({
         });
       }
       const payload = verifyJWT(authHeader.substring(7));
-      console.log(payload);
       if (payload === null || !payload.sub) {
         return new Response(JSON.stringify({ error: "invalid_token" }), {
           status: 401,

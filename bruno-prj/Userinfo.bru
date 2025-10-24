@@ -19,7 +19,7 @@ auth:oauth2 {
   client_id: {{client_id}}
   client_secret: {{client_secret}}
   scope: openid email profile
-  state: 
+  state: test-state
   pkce: true
   credentials_placement: body
   credentials_id: credentials
@@ -27,6 +27,10 @@ auth:oauth2 {
   token_header_prefix: Bearer
   auto_fetch_token: true
   auto_refresh_token: false
+}
+
+assert {
+  res.status: eq 200
 }
 
 settings {
