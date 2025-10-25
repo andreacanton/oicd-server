@@ -89,14 +89,14 @@ function hashPassword(password: string): string {
 function base64UrlEncode(buffer: Uint8Array | string): string {
   let encoded = Buffer.from(buffer).toString("base64");
   encoded = encoded.replace(/=*$/, "");
-  encoded = encoded.replace(/\+/g, "-").replace(/\//g, "_");
+  encoded = encoded.replaceAll("+", "-").replaceAll("/", "_");
   return encoded;
 }
 
 function base64UrlDecode(encoded: string | undefined): Buffer {
   const str = encoded ?? "";
   const padding = "=".repeat((4 - str.length % 4) % 4);
-  const base64 = (encoded + padding).replace(/\-/g, "+").replace(/\_/g, "/");
+  const base64 = (encoded + padding).replaceAll("-", "+").replaceAll("_", "/");
   return Buffer.from(base64, "base64");
 }
 
