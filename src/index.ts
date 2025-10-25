@@ -37,7 +37,7 @@ const clients = new Map([
   ["sample-client", {
     client_id: "sample-client",
     client_secret: "sample-secret",
-    redirect_uris: ["http://localhost:3001"],
+    redirect_uris: ["http://localhost:3001/"],
   }],
 ]);
 
@@ -230,7 +230,7 @@ serve({
       );
     }
 
-    if (path === "/authorize" && method === "GET") {
+    if (path === wellKnownConfig.authorization_endpoint.pathname && method === "GET") {
       const clientId = url.searchParams.get("client_id");
       const redirectUri = url.searchParams.get("redirect_uri");
       const codeChallenge = url.searchParams.get("code_challenge");
@@ -382,7 +382,7 @@ serve({
       const client = clients.get(client_id);
       if (!client) {
         return new Response(JSON.stringify({ error: "invalid_client" }), {
-          status: 401,
+          status: 400,
           headers: jsonHeaders,
         });
       }

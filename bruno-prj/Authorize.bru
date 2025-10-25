@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{authorization_endpoint}}?client_id={{client_id}}&redirect_uri={{redirect_uri}}&code_challenge={{code_challenge}}
+  url: {{authorization_endpoint}}?client_id={{client_id}}&redirect_uri={{redirect_uri}}&code_challenge={{code_challenge}}&response_type=code&code_challenge_method=S256
   body: none
   auth: inherit
 }
@@ -14,6 +14,8 @@ params:query {
   client_id: {{client_id}}
   redirect_uri: {{redirect_uri}}
   code_challenge: {{code_challenge}}
+  response_type: code
+  code_challenge_method: S256
 }
 
 script:pre-request {

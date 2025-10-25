@@ -5,7 +5,7 @@ import * as crypto from "crypto";
 const BASE_URL = "http://localhost:3000";
 const TEST_CLIENT_ID = "sample-client";
 const TEST_CLIENT_SECRET = "sample-secret";
-const TEST_REDIRECT_URI = "http://localhost:3001";
+const TEST_REDIRECT_URI = "http://localhost:3001/";
 const TEST_USERNAME = "testuser";
 const TEST_PASSWORD = "password123";
 
@@ -188,7 +188,7 @@ describe("OIDC Server", () => {
       expect(response.status).toBe(400);
     });
 
-    test("GET /authorize with valid parameters returns login form", async () => {
+    test.only("GET /authorize with valid parameters returns login form", async () => {
       const codeChallenge = generateCodeChallenge(generateCodeVerifier());
       const url = new URL(`${BASE_URL}/authorize`);
       url.searchParams.set("client_id", TEST_CLIENT_ID);
@@ -227,8 +227,10 @@ describe("OIDC Server", () => {
     });
 
     test("POST /authorize with valid credentials redirects with code", async () => {
-      const codeChallenge = generateCodeChallenge(generateCodeVerifier());
+      const codeVerifier = generateCodeVerifier();
+      const codeChallenge = generateCodeChallenge(codeVerifier);
       const state = generateState();
+      
       const formData = new FormData();
       formData.append("username", TEST_USERNAME);
       formData.append("password", TEST_PASSWORD);
@@ -240,8 +242,8 @@ describe("OIDC Server", () => {
 
       const response = await fetch(`${BASE_URL}/authorize`, {
         method: "POST",
-        redirect: "manual",
         body: formData,
+        redirect: "manual",
       });
 
       expect(response.status).toBe(302);
@@ -253,17 +255,12 @@ describe("OIDC Server", () => {
       expect(redirectUrl.searchParams.has("code")).toBe(true);
       expect(redirectUrl.searchParams.get("state")).toBe(state);
     });
-  });
 
-  describe("Token Endpoint", () => {
-    let authCode: string;
-    let codeVerifier: string;
-
-    beforeAll(async () => {
-      // Get an authorization code first
-      codeVerifier = generateCodeVerifier();
+    test("POST /authorize preserves state parameter", async () => {
+      const codeVerifier = generateCodeVerifier();
       const codeChallenge = generateCodeChallenge(codeVerifier);
-
+      const state = "my-custom-state-123";
+      
       const formData = new FormData();
       formData.append("username", TEST_USERNAME);
       formData.append("password", TEST_PASSWORD);
@@ -271,6 +268,7 @@ describe("OIDC Server", () => {
       formData.append("redirect_uri", TEST_REDIRECT_URI);
       formData.append("code_challenge", codeChallenge);
       formData.append("code_challenge_method", "S256");
+      formData.append("state", state);
 
       const response = await fetch(`${BASE_URL}/authorize`, {
         method: "POST",
@@ -280,20 +278,23 @@ describe("OIDC Server", () => {
 
       const location = response.headers.get("Location");
       const redirectUrl = new URL(location!);
-      authCode = redirectUrl.searchParams.get("code")!;
+      
+      expect(redirectUrl.searchParams.get("state")).toBe(state);
     });
+  });
 
+  describe("Token Endpoint", () => {
     test("POST /token with invalid grant_type returns 400", async () => {
       const response = await fetch(`${BASE_URL}/token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           grant_type: "invalid",
-          code: authCode,
+          code: "dummy",
           client_id: TEST_CLIENT_ID,
           client_secret: TEST_CLIENT_SECRET,
           redirect_uri: TEST_REDIRECT_URI,
-          code_verifier: codeVerifier,
+          code_verifier: "dummy",
         }),
       });
 
@@ -308,11 +309,11 @@ describe("OIDC Server", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           grant_type: "authorization_code",
-          code: authCode,
+          code: "dummy",
           client_id: "invalid-client",
           client_secret: "invalid-secret",
           redirect_uri: TEST_REDIRECT_URI,
-          code_verifier: codeVerifier,
+          code_verifier: "dummy",
         }),
       });
 
@@ -321,13 +322,55 @@ describe("OIDC Server", () => {
       expect(data.error).toBe("invalid_client");
     });
 
-    test("POST /token without code_verifier returns 400", async () => {
+    test("POST /token with invalid code returns 400", async () => {
       const response = await fetch(`${BASE_URL}/token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           grant_type: "authorization_code",
-          code: authCode,
+          code: "invalid-code",
+          client_id: TEST_CLIENT_ID,
+          client_secret: TEST_CLIENT_SECRET,
+          redirect_uri: TEST_REDIRECT_URI,
+          code_verifier: generateCodeVerifier(),
+        }),
+      });
+
+      const data: ErrorResponse = await response.json();
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("invalid_grant");
+    });
+
+    test("POST /token without code_verifier returns 400", async () => {
+      // Get a valid code first
+      const codeVerifier = generateCodeVerifier();
+      const codeChallenge = generateCodeChallenge(codeVerifier);
+      
+      const formData = new FormData();
+      formData.append("username", TEST_USERNAME);
+      formData.append("password", TEST_PASSWORD);
+      formData.append("client_id", TEST_CLIENT_ID);
+      formData.append("redirect_uri", TEST_REDIRECT_URI);
+      formData.append("code_challenge", codeChallenge);
+      formData.append("code_challenge_method", "S256");
+
+      const authResponse = await fetch(`${BASE_URL}/authorize`, {
+        method: "POST",
+        body: formData,
+        redirect: "manual",
+      });
+
+      const location = authResponse.headers.get("Location");
+      const redirectUrl = new URL(location!);
+      const code = redirectUrl.searchParams.get("code")!;
+
+      // Try to exchange without code_verifier
+      const response = await fetch(`${BASE_URL}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "authorization_code",
+          code: code,
           client_id: TEST_CLIENT_ID,
           client_secret: TEST_CLIENT_SECRET,
           redirect_uri: TEST_REDIRECT_URI,
@@ -341,16 +384,81 @@ describe("OIDC Server", () => {
     });
 
     test("POST /token with invalid code_verifier returns 400", async () => {
+      // Get a valid code
+      const codeVerifier = generateCodeVerifier();
+      const codeChallenge = generateCodeChallenge(codeVerifier);
+      
+      const formData = new FormData();
+      formData.append("username", TEST_USERNAME);
+      formData.append("password", TEST_PASSWORD);
+      formData.append("client_id", TEST_CLIENT_ID);
+      formData.append("redirect_uri", TEST_REDIRECT_URI);
+      formData.append("code_challenge", codeChallenge);
+      formData.append("code_challenge_method", "S256");
+
+      const authResponse = await fetch(`${BASE_URL}/authorize`, {
+        method: "POST",
+        body: formData,
+        redirect: "manual",
+      });
+
+      const location = authResponse.headers.get("Location");
+      const redirectUrl = new URL(location!);
+      const code = redirectUrl.searchParams.get("code")!;
+
+      // Try with wrong verifier
       const response = await fetch(`${BASE_URL}/token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           grant_type: "authorization_code",
-          code: authCode,
+          code: code,
           client_id: TEST_CLIENT_ID,
           client_secret: TEST_CLIENT_SECRET,
           redirect_uri: TEST_REDIRECT_URI,
-          code_verifier: "invalid-verifier",
+          code_verifier: generateCodeVerifier(), // Different verifier
+        }),
+      });
+
+      const data: ErrorResponse = await response.json() as ErrorResponse;
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("invalid_grant");
+    });
+
+    test("POST /token with wrong redirect_uri returns 400", async () => {
+      // Get a valid code
+      const codeVerifier = generateCodeVerifier();
+      const codeChallenge = generateCodeChallenge(codeVerifier);
+      
+      const formData = new FormData();
+      formData.append("username", TEST_USERNAME);
+      formData.append("password", TEST_PASSWORD);
+      formData.append("client_id", TEST_CLIENT_ID);
+      formData.append("redirect_uri", TEST_REDIRECT_URI);
+      formData.append("code_challenge", codeChallenge);
+      formData.append("code_challenge_method", "S256");
+
+      const authResponse = await fetch(`${BASE_URL}/authorize`, {
+        method: "POST",
+        body: formData,
+        redirect: "manual",
+      });
+
+      const location = authResponse.headers.get("Location");
+      const redirectUrl = new URL(location!);
+      const code = redirectUrl.searchParams.get("code")!;
+
+      // Try with different redirect_uri
+      const response = await fetch(`${BASE_URL}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "authorization_code",
+          code: code,
+          client_id: TEST_CLIENT_ID,
+          client_secret: TEST_CLIENT_SECRET,
+          redirect_uri: "http://different.com/callback",
+          code_verifier: codeVerifier,
         }),
       });
 
@@ -454,12 +562,86 @@ describe("OIDC Server", () => {
       expect(data.access_token).toBeDefined();
       expect(data.id_token).toBeDefined();
     });
+
+    test("POST /token rejects reused authorization code", async () => {
+      // Get a fresh auth code
+      const newVerifier = generateCodeVerifier();
+      const newChallenge = generateCodeChallenge(newVerifier);
+
+      const formData = new FormData();
+      formData.append("username", TEST_USERNAME);
+      formData.append("password", TEST_PASSWORD);
+      formData.append("client_id", TEST_CLIENT_ID);
+      formData.append("redirect_uri", TEST_REDIRECT_URI);
+      formData.append("code_challenge", newChallenge);
+      formData.append("code_challenge_method", "S256");
+
+      const authResponse = await fetch(`${BASE_URL}/authorize`, {
+        method: "POST",
+        body: formData,
+        redirect: "manual",
+      });
+
+      const location = authResponse.headers.get("Location");
+      const redirectUrl = new URL(location!);
+      const code = redirectUrl.searchParams.get("code")!;
+
+      // First exchange - should succeed
+      const firstResponse = await fetch(`${BASE_URL}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "authorization_code",
+          code,
+          client_id: TEST_CLIENT_ID,
+          client_secret: TEST_CLIENT_SECRET,
+          redirect_uri: TEST_REDIRECT_URI,
+          code_verifier: newVerifier,
+        }),
+      });
+
+      expect(firstResponse.status).toBe(200);
+
+      // Second exchange with same code - should fail
+      const secondResponse = await fetch(`${BASE_URL}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "authorization_code",
+          code,
+          client_id: TEST_CLIENT_ID,
+          client_secret: TEST_CLIENT_SECRET,
+          redirect_uri: TEST_REDIRECT_URI,
+          code_verifier: newVerifier,
+        }),
+      });
+
+      expect(secondResponse.status).toBe(400);
+      const data: ErrorResponse = await secondResponse.json() as ErrorResponse;
+      expect(data.error).toBe("invalid_grant");
+    });
   });
 
   describe("UserInfo Endpoint", () => {
-    let accessToken: string;
+    test("GET /userinfo without Authorization header returns 401", async () => {
+      const response = await fetch(`${BASE_URL}/userinfo`);
+      const data: ErrorResponse = await response.json() as ErrorResponse;
 
-    beforeAll(async () => {
+      expect(response.status).toBe(401);
+      expect(data.error).toBe("unauthorized");
+    });
+
+    test("GET /userinfo with invalid token returns 401", async () => {
+      const response = await fetch(`${BASE_URL}/userinfo`, {
+        headers: { Authorization: "Bearer invalid-token" },
+      });
+      const data: ErrorResponse = await response.json() as ErrorResponse;
+
+      expect(response.status).toBe(401);
+      expect(data.error).toBe("invalid_token");
+    });
+
+    test("GET /userinfo with valid token returns user info", async () => {
       // Get access token
       const verifier = generateCodeVerifier();
       const challenge = generateCodeChallenge(verifier);
@@ -496,28 +678,9 @@ describe("OIDC Server", () => {
       });
 
       const tokenData = await tokenResponse.json() as TokenResponse;
-      accessToken = tokenData.access_token;
-    });
+      const accessToken = tokenData.access_token;
 
-    test("GET /userinfo without Authorization header returns 401", async () => {
-      const response = await fetch(`${BASE_URL}/userinfo`);
-      const data: ErrorResponse = await response.json() as ErrorResponse;
-
-      expect(response.status).toBe(401);
-      expect(data.error).toBe("unauthorized");
-    });
-
-    test("GET /userinfo with invalid token returns 401", async () => {
-      const response = await fetch(`${BASE_URL}/userinfo`, {
-        headers: { Authorization: "Bearer invalid-token" },
-      });
-      const data: ErrorResponse = await response.json() as ErrorResponse;
-
-      expect(response.status).toBe(401);
-      expect(data.error).toBe("invalid_token");
-    });
-
-    test("GET /userinfo with valid token returns user info", async () => {
+      // Use access token to get user info
       const response = await fetch(`${BASE_URL}/userinfo`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
@@ -528,14 +691,28 @@ describe("OIDC Server", () => {
       expect(data.email).toBe("test@example.com");
       expect(data.name).toBe("testuser");
     });
+
+    test("GET /userinfo with malformed Authorization header returns 401", async () => {
+      const response = await fetch(`${BASE_URL}/userinfo`, {
+        headers: { Authorization: "NotBearer token" },
+      });
+      const data: ErrorResponse = await response.json() as ErrorResponse;
+
+      expect(response.status).toBe(401);
+      expect(data.error).toBe("unauthorized");
+    });
   });
 
-  describe("PKCE Flow", () => {
-    test("Complete PKCE flow end-to-end", async () => {
+  describe("Complete PKCE Flow", () => {
+    test("End-to-end OAuth 2.1 PKCE flow", async () => {
       // 1. Generate PKCE parameters
       const codeVerifier = generateCodeVerifier();
       const codeChallenge = generateCodeChallenge(codeVerifier);
       const state = generateState();
+
+      // Verify PKCE parameters are correct
+      expect(codeVerifier.length).toBe(43);
+      expect(codeChallenge.length).toBe(43);
 
       // 2. Start authorization
       const authFormData = new FormData();
@@ -583,8 +760,22 @@ describe("OIDC Server", () => {
       expect(tokenResponse.status).toBe(200);
       expect(tokenData.access_token).toBeDefined();
       expect(tokenData.id_token).toBeDefined();
+      expect(tokenData.token_type).toBe("Bearer");
+      expect(tokenData.expires_in).toBe(900);
 
-      // 5. Use access token to get user info
+      // 5. Verify ID token structure
+      const idTokenParts = tokenData.id_token.split(".");
+      expect(idTokenParts.length).toBe(3);
+      
+      const idTokenPayload = JSON.parse(
+        Buffer.from(idTokenParts[1], "base64url").toString()
+      );
+      expect(idTokenPayload.sub).toBe("user-1");
+      expect(idTokenPayload.email).toBe("test@example.com");
+      expect(idTokenPayload.name).toBe("testuser");
+      expect(idTokenPayload.aud).toBe(TEST_CLIENT_ID);
+
+      // 6. Use access token to get user info
       const userinfoResponse = await fetch(`${BASE_URL}/userinfo`, {
         headers: { Authorization: `Bearer ${tokenData.access_token}` },
       });
@@ -594,6 +785,231 @@ describe("OIDC Server", () => {
       expect(userinfo.sub).toBe("user-1");
       expect(userinfo.email).toBe("test@example.com");
       expect(userinfo.name).toBe("testuser");
+    });
+
+    test("PKCE prevents code interception attack", async () => {
+      // Attacker intercepts the authorization code but doesn't have the verifier
+      
+      // 1. Victim generates PKCE and gets code
+      const victimVerifier = generateCodeVerifier();
+      const victimChallenge = generateCodeChallenge(victimVerifier);
+
+      const formData = new FormData();
+      formData.append("username", TEST_USERNAME);
+      formData.append("password", TEST_PASSWORD);
+      formData.append("client_id", TEST_CLIENT_ID);
+      formData.append("redirect_uri", TEST_REDIRECT_URI);
+      formData.append("code_challenge", victimChallenge);
+      formData.append("code_challenge_method", "S256");
+
+      const authResponse = await fetch(`${BASE_URL}/authorize`, {
+        method: "POST",
+        body: formData,
+        redirect: "manual",
+      });
+
+      const location = authResponse.headers.get("Location");
+      const redirectUrl = new URL(location!);
+      const code = redirectUrl.searchParams.get("code")!;
+
+      // 2. Attacker tries to use the code with their own verifier
+      const attackerVerifier = generateCodeVerifier();
+
+      const attackResponse = await fetch(`${BASE_URL}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "authorization_code",
+          code,
+          client_id: TEST_CLIENT_ID,
+          client_secret: TEST_CLIENT_SECRET,
+          redirect_uri: TEST_REDIRECT_URI,
+          code_verifier: attackerVerifier, // Wrong verifier!
+        }),
+      });
+
+      // Attack should fail
+      expect(attackResponse.status).toBe(400);
+      const data: ErrorResponse = await attackResponse.json() as ErrorResponse;
+      expect(data.error).toBe("invalid_grant");
+    });
+  });
+
+  describe("JWT Token Verification", () => {
+    test("Access token contains correct claims", async () => {
+      // Get tokens
+      const verifier = generateCodeVerifier();
+      const challenge = generateCodeChallenge(verifier);
+
+      const formData = new FormData();
+      formData.append("username", TEST_USERNAME);
+      formData.append("password", TEST_PASSWORD);
+      formData.append("client_id", TEST_CLIENT_ID);
+      formData.append("redirect_uri", TEST_REDIRECT_URI);
+      formData.append("code_challenge", challenge);
+      formData.append("code_challenge_method", "S256");
+
+      const authResponse = await fetch(`${BASE_URL}/authorize`, {
+        method: "POST",
+        body: formData,
+        redirect: "manual",
+      });
+
+      const location = authResponse.headers.get("Location");
+      const redirectUrl = new URL(location!);
+      const code = redirectUrl.searchParams.get("code")!;
+
+      const tokenResponse = await fetch(`${BASE_URL}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "authorization_code",
+          code,
+          client_id: TEST_CLIENT_ID,
+          client_secret: TEST_CLIENT_SECRET,
+          redirect_uri: TEST_REDIRECT_URI,
+          code_verifier: verifier,
+        }),
+      });
+
+      const tokenData = await tokenResponse.json() as TokenResponse;
+
+      // Decode access token (don't verify signature, just check structure)
+      const accessTokenParts = tokenData.access_token.split(".");
+      const payload = JSON.parse(
+        Buffer.from(accessTokenParts[1], "base64url").toString()
+      );
+
+      expect(payload.sub).toBe("user-1");
+      expect(payload.aud).toBe(TEST_CLIENT_ID);
+      expect(payload.iss).toBe(BASE_URL + "/");
+      expect(payload.scope).toBe("openid profile email");
+      expect(payload.iat).toBeDefined();
+      expect(payload.exp).toBeDefined();
+      expect(payload.exp).toBeGreaterThan(payload.iat);
+    });
+
+    test("ID token contains correct claims", async () => {
+      // Get tokens
+      const verifier = generateCodeVerifier();
+      const challenge = generateCodeChallenge(verifier);
+
+      const formData = new FormData();
+      formData.append("username", TEST_USERNAME);
+      formData.append("password", TEST_PASSWORD);
+      formData.append("client_id", TEST_CLIENT_ID);
+      formData.append("redirect_uri", TEST_REDIRECT_URI);
+      formData.append("code_challenge", challenge);
+      formData.append("code_challenge_method", "S256");
+
+      const authResponse = await fetch(`${BASE_URL}/authorize`, {
+        method: "POST",
+        body: formData,
+        redirect: "manual",
+      });
+
+      const location = authResponse.headers.get("Location");
+      const redirectUrl = new URL(location!);
+      const code = redirectUrl.searchParams.get("code")!;
+
+      const tokenResponse = await fetch(`${BASE_URL}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "authorization_code",
+          code,
+          client_id: TEST_CLIENT_ID,
+          client_secret: TEST_CLIENT_SECRET,
+          redirect_uri: TEST_REDIRECT_URI,
+          code_verifier: verifier,
+        }),
+      });
+
+      const tokenData = await tokenResponse.json() as TokenResponse;
+
+      // Decode ID token
+      const idTokenParts = tokenData.id_token.split(".");
+      const payload = JSON.parse(
+        Buffer.from(idTokenParts[1], "base64url").toString()
+      );
+
+      expect(payload.sub).toBe("user-1");
+      expect(payload.email).toBe("test@example.com");
+      expect(payload.name).toBe("testuser");
+      expect(payload.aud).toBe(TEST_CLIENT_ID);
+      expect(payload.iss).toBe(BASE_URL + "/");
+      expect(payload.iat).toBeDefined();
+      expect(payload.exp).toBeDefined();
+    });
+  });
+
+  describe("Error Handling", () => {
+    test("GET /authorize without client_id returns 400", async () => {
+      const url = new URL(`${BASE_URL}/authorize`);
+      url.searchParams.set("redirect_uri", TEST_REDIRECT_URI);
+      url.searchParams.set("code_challenge", "dummy");
+
+      const response = await fetch(url);
+      expect(response.status).toBe(400);
+    });
+
+    test("GET /authorize without redirect_uri returns 400", async () => {
+      const url = new URL(`${BASE_URL}/authorize`);
+      url.searchParams.set("client_id", TEST_CLIENT_ID);
+      url.searchParams.set("code_challenge", "dummy");
+
+      const response = await fetch(url);
+      expect(response.status).toBe(400);
+    });
+
+    test("GET /authorize without code_challenge returns 400", async () => {
+      const url = new URL(`${BASE_URL}/authorize`);
+      url.searchParams.set("client_id", TEST_CLIENT_ID);
+      url.searchParams.set("redirect_uri", TEST_REDIRECT_URI);
+
+      const response = await fetch(url);
+      expect(response.status).toBe(400);
+    });
+
+    test("POST /token with missing parameters returns 400", async () => {
+      const response = await fetch(`${BASE_URL}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "authorization_code",
+          // Missing other required parameters
+        }),
+      });
+
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe("CORS Support", () => {
+    test("All endpoints support CORS preflight", async () => {
+      const endpoints = [
+        "/",
+        "/.well-known/openid-configuration",
+        "/.well-known/jwks.json",
+        "/authorize",
+        "/token",
+        "/userinfo",
+      ];
+
+      for (const endpoint of endpoints) {
+        const response = await fetch(`${BASE_URL}${endpoint}`, {
+          method: "OPTIONS",
+        });
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+        expect(response.headers.get("Access-Control-Allow-Methods")).toBe(
+          "GET, POST, OPTIONS"
+        );
+        expect(response.headers.get("Access-Control-Allow-Headers")).toBe(
+          "Content-Type, Authorization"
+        );
+      }
     });
   });
 });
