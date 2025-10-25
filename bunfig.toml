@@ -1,0 +1,6 @@
+[test]
+coverage = true
+coverageReporter = "lcov"
+
+[test.reporter]
+junit = "junit.xml"
