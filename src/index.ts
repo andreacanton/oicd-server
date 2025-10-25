@@ -289,7 +289,6 @@ serve({
       }
 
       if (
-        !clients.get(clientId) ||
         !clients.get(clientId)?.redirect_uris.includes(redirectUri)
       ) {
         return jsonResponse({
@@ -375,7 +374,7 @@ serve({
         redirect_uri: string;
         code_verifier: string;
       };
-      let tokenRequest: TokenRequest = {} as TokenRequest;
+      let tokenRequest: TokenRequest;
       if (
         req.headers.get("Content-Type") === "application/x-www-form-urlencoded"
       ) {
@@ -474,7 +473,7 @@ serve({
         return jsonResponse({ error: "unauthorized" }, 401);
       }
       const payload = verifyJWT(authHeader?.substring(7) ?? "");
-      if (payload === null || !payload.sub) {
+      if (!payload?.sub) {
         return jsonResponse({ error: "invalid_token" }, 401);
       }
       const user = usersById.get(payload.sub);
