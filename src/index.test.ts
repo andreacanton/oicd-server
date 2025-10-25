@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import * as crypto from "crypto";
+import * as crypto from "node:crypto";
 
 // Test configuration
 const BASE_URL = "http://localhost:3000";
