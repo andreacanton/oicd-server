@@ -201,6 +201,19 @@ function createAccessToken(
     scope,
   });
 }
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+function jsonRes(body: any, status: number = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...corsHeaders },
+  });
+}
+
 
 // HTTP SERVER
 serve({
@@ -209,19 +222,6 @@ serve({
     const url = new URL(req.url);
     const path = url.pathname;
     const method = req.method;
-    const corsHeaders = {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    };
-    const jsonHeaders = { "Content-Type": "application/json", ...corsHeaders };
-
-    function jsonResponse(body: any, status: number = 200): Response {
-      return new Response(JSON.stringify(body), {
-        status,
-        headers: jsonHeaders,
-      });
-    }
 
     if (method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
@@ -234,11 +234,11 @@ serve({
     }
 
     if (path === "/.well-known/openid-configuration") {
-      return jsonResponse(wellKnownConfig);
+      return jsonRes(wellKnownConfig);
     }
 
     if (path === wellKnownConfig.jwks_uri.pathname) {
-      return jsonResponse({
+      return jsonRes({
         keys: [{ ...jwk, alg: "RS256", use: "sig", kid: "1" }],
       });
     }
@@ -256,7 +256,7 @@ serve({
       const responseType = url.searchParams.get("response_type");
 
       if (responseType !== "code") {
-        return jsonResponse({
+        return jsonRes({
           error: "unsupported_response_type",
           error_description:
             "Only 'code' response_type is supported (OAuth 2.1)",
@@ -264,13 +264,13 @@ serve({
       }
 
       if (!clientId || !redirectUri || !codeChallenge) {
-        return jsonResponse({
+        return jsonRes({
           error: "missing_parameter",
         }, 400);
       }
 
       if (codeChallengeMethod !== "S256") {
-        return jsonResponse({
+        return jsonRes({
           error: "unsupported_code_challenge_method",
           error_description:
             "Only S256 code_challenge_method is supported (OAuth 2.1 requirement)",
@@ -281,7 +281,7 @@ serve({
       // this is explained in the RFC 7636 section 4.1
       // https://www.rfc-editor.org/rfc/rfc7636.html
       if (codeChallengeMethod === "S256" && codeChallenge.length !== 43) {
-        return jsonResponse({
+        return jsonRes({
           error: "invalid_code_challenge",
           error_description:
             "Invalid code_challenge: S256 method requires exactly 43 characters",
@@ -291,7 +291,7 @@ serve({
       if (
         !clients.get(clientId)?.redirect_uris.includes(redirectUri)
       ) {
-        return jsonResponse({
+        return jsonRes({
           error: "invalid_client",
           error_description: "Invalid client or redirect URI",
         }, 400);
@@ -342,7 +342,7 @@ serve({
       const user = usersByUsername.get(username);
 
       if (!user || user.passwordHash !== hashPassword(password)) {
-        return jsonResponse({
+        return jsonRes({
           error: "invalid_credentials",
         }, 401);
       }
@@ -401,18 +401,18 @@ serve({
       if (
         !grant_type || !code || !redirect_uri || !client_id || !code_verifier
       ) {
-        return jsonResponse({
+        return jsonRes({
           error: "missing_parameter",
         }, 400);
       }
 
       if (grant_type !== "authorization_code") {
-        return jsonResponse({ error: "unsupported_grant_type" }, 400);
+        return jsonRes({ error: "unsupported_grant_type" }, 400);
       }
       // client_secret is not required
       const client = clients.get(client_id);
       if (!client) {
-        return jsonResponse({ error: "invalid_client" }, 401);
+        return jsonRes({ error: "invalid_client" }, 401);
       }
 
       const session = authSessions.get(code);
@@ -420,13 +420,13 @@ serve({
         !session || session.expiresAt < Date.now() ||
         session.redirectUri !== redirect_uri
       ) {
-        return jsonResponse({
+        return jsonRes({
           error: "invalid_grant",
         }, 400);
       }
 
       if (!code_verifier) {
-        return jsonResponse({
+        return jsonRes({
           error: "invalid_grant",
           error_description: "code_verifier required",
         }, 400);
@@ -438,7 +438,7 @@ serve({
         : session.codeChallenge === code_verifier;
 
       if (!verified) {
-        return jsonResponse({
+        return jsonRes({
           error: "invalid_grant",
           error_description: "invalid code_verifier",
         }, 400);
@@ -449,14 +449,14 @@ serve({
       try {
         const accessToken = createAccessToken(session.userId, client_id);
         const idToken = createIdToken(session.userId, client_id);
-        return jsonResponse({
+        return jsonRes({
           access_token: accessToken,
           id_token: idToken,
           token_type: "Bearer",
           expires_in: config.sessionDuration,
         });
       } catch (error) {
-        return jsonResponse({
+        return jsonRes({
           error: "server_error",
           error_description: `Error in token creation: ${JSON.stringify(error)
             }`,
@@ -470,25 +470,25 @@ serve({
     ) {
       const authHeader = req.headers.get("Authorization");
       if (!authHeader?.startsWith("Bearer ")) {
-        return jsonResponse({ error: "unauthorized" }, 401);
+        return jsonRes({ error: "unauthorized" }, 401);
       }
       const payload = verifyJWT(authHeader?.substring(7) ?? "");
       if (!payload?.sub) {
-        return jsonResponse({ error: "invalid_token" }, 401);
+        return jsonRes({ error: "invalid_token" }, 401);
       }
       const user = usersById.get(payload.sub);
       if (!user) {
-        return jsonResponse({ error: "user_not_found" }, 404);
+        return jsonRes({ error: "user_not_found" }, 404);
       }
 
-      return jsonResponse({
+      return jsonRes({
         sub: user.id,
         email: user.email,
         name: user.username,
       });
     }
 
-    return jsonResponse({ error: "not_found" }, 404);
+    return jsonRes({ error: "not_found" }, 404);
   },
 });
 
