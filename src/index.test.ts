@@ -188,11 +188,12 @@ describe("OIDC Server", () => {
       expect(response.status).toBe(400);
     });
 
-    test.only("GET /authorize with valid parameters returns login form", async () => {
+    test("GET /authorize with valid parameters returns login form", async () => {
       const codeChallenge = generateCodeChallenge(generateCodeVerifier());
       const url = new URL(`${BASE_URL}/authorize`);
       url.searchParams.set("client_id", TEST_CLIENT_ID);
       url.searchParams.set("redirect_uri", TEST_REDIRECT_URI);
+      url.searchParams.set("response_type", "code");
       url.searchParams.set("code_challenge", codeChallenge);
       url.searchParams.set("code_challenge_method", "S256");
       url.searchParams.set("state", generateState());
@@ -230,7 +231,7 @@ describe("OIDC Server", () => {
       const codeVerifier = generateCodeVerifier();
       const codeChallenge = generateCodeChallenge(codeVerifier);
       const state = generateState();
-      
+
       const formData = new FormData();
       formData.append("username", TEST_USERNAME);
       formData.append("password", TEST_PASSWORD);
@@ -260,7 +261,7 @@ describe("OIDC Server", () => {
       const codeVerifier = generateCodeVerifier();
       const codeChallenge = generateCodeChallenge(codeVerifier);
       const state = "my-custom-state-123";
-      
+
       const formData = new FormData();
       formData.append("username", TEST_USERNAME);
       formData.append("password", TEST_PASSWORD);
@@ -278,7 +279,7 @@ describe("OIDC Server", () => {
 
       const location = response.headers.get("Location");
       const redirectUrl = new URL(location!);
-      
+
       expect(redirectUrl.searchParams.get("state")).toBe(state);
     });
   });
@@ -345,7 +346,7 @@ describe("OIDC Server", () => {
       // Get a valid code first
       const codeVerifier = generateCodeVerifier();
       const codeChallenge = generateCodeChallenge(codeVerifier);
-      
+
       const formData = new FormData();
       formData.append("username", TEST_USERNAME);
       formData.append("password", TEST_PASSWORD);
@@ -374,6 +375,7 @@ describe("OIDC Server", () => {
           client_id: TEST_CLIENT_ID,
           client_secret: TEST_CLIENT_SECRET,
           redirect_uri: TEST_REDIRECT_URI,
+          code_verifier: "invalid-code",
         }),
       });
 
@@ -387,7 +389,7 @@ describe("OIDC Server", () => {
       // Get a valid code
       const codeVerifier = generateCodeVerifier();
       const codeChallenge = generateCodeChallenge(codeVerifier);
-      
+
       const formData = new FormData();
       formData.append("username", TEST_USERNAME);
       formData.append("password", TEST_PASSWORD);
@@ -429,7 +431,7 @@ describe("OIDC Server", () => {
       // Get a valid code
       const codeVerifier = generateCodeVerifier();
       const codeChallenge = generateCodeChallenge(codeVerifier);
-      
+
       const formData = new FormData();
       formData.append("username", TEST_USERNAME);
       formData.append("password", TEST_PASSWORD);
@@ -766,9 +768,9 @@ describe("OIDC Server", () => {
       // 5. Verify ID token structure
       const idTokenParts = tokenData.id_token.split(".");
       expect(idTokenParts.length).toBe(3);
-      
+
       const idTokenPayload = JSON.parse(
-        Buffer.from(idTokenParts[1], "base64url").toString()
+        Buffer.from(idTokenParts[1], "base64url").toString(),
       );
       expect(idTokenPayload.sub).toBe("user-1");
       expect(idTokenPayload.email).toBe("test@example.com");
@@ -789,7 +791,7 @@ describe("OIDC Server", () => {
 
     test("PKCE prevents code interception attack", async () => {
       // Attacker intercepts the authorization code but doesn't have the verifier
-      
+
       // 1. Victim generates PKCE and gets code
       const victimVerifier = generateCodeVerifier();
       const victimChallenge = generateCodeChallenge(victimVerifier);
@@ -877,7 +879,7 @@ describe("OIDC Server", () => {
       // Decode access token (don't verify signature, just check structure)
       const accessTokenParts = tokenData.access_token.split(".");
       const payload = JSON.parse(
-        Buffer.from(accessTokenParts[1], "base64url").toString()
+        Buffer.from(accessTokenParts[1], "base64url").toString(),
       );
 
       expect(payload.sub).toBe("user-1");
@@ -930,7 +932,7 @@ describe("OIDC Server", () => {
       // Decode ID token
       const idTokenParts = tokenData.id_token.split(".");
       const payload = JSON.parse(
-        Buffer.from(idTokenParts[1], "base64url").toString()
+        Buffer.from(idTokenParts[1], "base64url").toString(),
       );
 
       expect(payload.sub).toBe("user-1");
@@ -1004,10 +1006,10 @@ describe("OIDC Server", () => {
         expect(response.status).toBe(200);
         expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
         expect(response.headers.get("Access-Control-Allow-Methods")).toBe(
-          "GET, POST, OPTIONS"
+          "GET, POST, OPTIONS",
         );
         expect(response.headers.get("Access-Control-Allow-Headers")).toBe(
-          "Content-Type, Authorization"
+          "Content-Type, Authorization",
         );
       }
     });

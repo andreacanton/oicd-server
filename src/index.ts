@@ -13,7 +13,7 @@ const wellKnownConfig = {
   issuer: config.baseUrl,
   authorization_endpoint: new URL("/authorize", config.baseUrl),
   token_endpoint: new URL("/token", config.baseUrl),
-  userinfo_endpoint: new URL("userinfo", config.baseUrl),
+  userinfo_endpoint: new URL("/userinfo", config.baseUrl),
   jwks_uri: new URL("/.well-known/jwks.json", config.baseUrl),
   response_types_supported: ["code"],
   subject_types_supported: ["public"],
@@ -93,8 +93,9 @@ function base64UrlEncode(buffer: Uint8Array | string): string {
   return encoded;
 }
 
-function base64UrlDecode(encoded: string): Buffer {
-  const padding = "=".repeat((4 - encoded.length % 4) % 4);
+function base64UrlDecode(encoded: string | undefined): Buffer {
+  const str = encoded ?? "";
+  const padding = "=".repeat((4 - str.length % 4) % 4);
   const base64 = (encoded + padding).replace(/\-/g, "+").replace(/\_/g, "/");
   return Buffer.from(base64, "base64");
 }
@@ -106,7 +107,17 @@ function verifySHA256(codeChallenge: string, codeVerifier: string): boolean {
 }
 
 // JWT creation
-function createJWT(payload: any): string {
+type JWTPayload = {
+  sub: string;
+  email?: string;
+  name?: string;
+  aud: string;
+  iss: string;
+  iat: number;
+  exp: number;
+  scope?: string;
+};
+function createJWT(payload: JWTPayload): string {
   const header = { alg: "RS256", typ: "JWT" };
   const headerEncoded = base64UrlEncode(JSON.stringify(header));
   const payloadEncoded = base64UrlEncode(JSON.stringify(payload));
@@ -120,7 +131,7 @@ function createJWT(payload: any): string {
 
 // JWT verification
 // if the token is valid return its payload, null otherwise
-function verifyJWT(token: string): any {
+function verifyJWT(token: string): JWTPayload | null {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
@@ -149,7 +160,7 @@ function verifyJWT(token: string): any {
     }
 
     // Check issuer
-    if (payload.iss !== wellKnownConfig.issuer.toString()) {
+    if (payload.iss !== wellKnownConfig.issuer.href) {
       return null;
     }
 
@@ -170,7 +181,7 @@ function createIdToken(userId: string, clientId: string) {
     email: user.email,
     name: user.username,
     aud: clientId,
-    iss: wellKnownConfig.issuer,
+    iss: wellKnownConfig.issuer.href,
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + config.sessionDuration,
   });
@@ -184,7 +195,7 @@ function createAccessToken(
   return createJWT({
     sub: userId,
     aud: clientId,
-    iss: wellKnownConfig.issuer,
+    iss: wellKnownConfig.issuer.href,
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + config.sessionDuration,
     scope,
@@ -194,7 +205,7 @@ function createAccessToken(
 // HTTP SERVER
 serve({
   port: config.baseUrl.port,
-  async fetch(req) {
+  async fetch(req: Request) {
     const url = new URL(req.url);
     const path = url.pathname;
     const method = req.method;
@@ -204,6 +215,13 @@ serve({
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
     };
     const jsonHeaders = { "Content-Type": "application/json", ...corsHeaders };
+
+    function jsonResponse(body: any, status: number = 200): Response {
+      return new Response(JSON.stringify(body), {
+        status,
+        headers: jsonHeaders,
+      });
+    }
 
     if (method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
@@ -216,21 +234,20 @@ serve({
     }
 
     if (path === "/.well-known/openid-configuration") {
-      return new Response(JSON.stringify(wellKnownConfig), {
-        headers: jsonHeaders,
+      return jsonResponse(wellKnownConfig);
+    }
+
+    if (path === wellKnownConfig.jwks_uri.pathname) {
+      return jsonResponse({
+        keys: [{ ...jwk, alg: "RS256", use: "sig", kid: "1" }],
       });
     }
 
-    if (path === "/.well-known/jwks.json") {
-      return new Response(
-        JSON.stringify({
-          keys: [{ ...jwk, alg: "RS256", use: "sig", kid: "1" }],
-        }),
-        { headers: jsonHeaders },
-      );
-    }
-
-    if (path === wellKnownConfig.authorization_endpoint.pathname && method === "GET") {
+    // GET Authorization endpoint
+    if (
+      path === wellKnownConfig.authorization_endpoint.pathname &&
+      method === "GET"
+    ) {
       const clientId = url.searchParams.get("client_id");
       const redirectUri = url.searchParams.get("redirect_uri");
       const codeChallenge = url.searchParams.get("code_challenge");
@@ -239,38 +256,46 @@ serve({
       const responseType = url.searchParams.get("response_type");
 
       if (responseType !== "code") {
-        return new Response(
-          "Only 'code' response_type is supported (OAuth 2.1)",
-          { status: 400 },
-        );
+        return jsonResponse({
+          error: "unsupported_response_type",
+          error_description:
+            "Only 'code' response_type is supported (OAuth 2.1)",
+        }, 400);
       }
 
       if (!clientId || !redirectUri || !codeChallenge) {
-        return new Response("Missing required parameters", { status: 400 });
+        return jsonResponse({
+          error: "missing_parameter",
+        }, 400);
       }
 
       if (codeChallengeMethod !== "S256") {
-        return new Response(
-          "Only S256 code_challenge_method is supported (OAuth 2.1 requirement)",
-          { status: 400 },
-        );
+        return jsonResponse({
+          error: "unsupported_code_challenge_method",
+          error_description:
+            "Only S256 code_challenge_method is supported (OAuth 2.1 requirement)",
+        }, 400);
       }
 
       // the code challenge should be of 43 chars exaclty.
       // this is explained in the RFC 7636 section 4.1
       // https://www.rfc-editor.org/rfc/rfc7636.html
       if (codeChallengeMethod === "S256" && codeChallenge.length !== 43) {
-        return new Response(
-          "Invalid code_challenge: S256 method requires exactly 43 characters",
-          { status: 400 },
-        );
+        return jsonResponse({
+          error: "invalid_code_challenge",
+          error_description:
+            "Invalid code_challenge: S256 method requires exactly 43 characters",
+        }, 400);
       }
 
       if (
         !clients.get(clientId) ||
         !clients.get(clientId)?.redirect_uris.includes(redirectUri)
       ) {
-        return new Response("Invalid client or redirect URI", { status: 400 });
+        return jsonResponse({
+          error: "invalid_client",
+          error_description: "Invalid client or redirect URI",
+        }, 400);
       }
 
       const html = `<!DOCTYPE html>
@@ -299,7 +324,7 @@ serve({
       });
     }
 
-    // POST authorize
+    // POST Authorization token
     if (
       path === wellKnownConfig.authorization_endpoint.pathname &&
       method === "POST"
@@ -318,11 +343,13 @@ serve({
       const user = usersByUsername.get(username);
 
       if (!user || user.passwordHash !== hashPassword(password)) {
-        return new Response("Invalid credentials", { status: 401 });
+        return jsonResponse({
+          error: "invalid_credentials",
+        }, 401);
       }
 
       const code = generateCode();
-      const expiresAt = Date.now() + config.sessionDuration; // 60 seconds
+      const expiresAt = Date.now() + (config.sessionDuration * 1000);
       authSessions.set(code, {
         userId: user.id,
         clientId,
@@ -336,11 +363,11 @@ serve({
       redirectUrl.searchParams.set("code", code);
       if (state) redirectUrl.searchParams.set("state", state);
 
-      return Response.redirect(redirectUrl.toString(), 302);
+      return Response.redirect(redirectUrl.href, 302);
     }
 
     // POST Token endpoint
-    if (path === "/token" && method === "POST") {
+    if (path === wellKnownConfig.token_endpoint.pathname && method === "POST") {
       type TokenRequest = {
         grant_type: string;
         code: string;
@@ -372,19 +399,21 @@ serve({
         code_verifier,
       } = tokenRequest;
 
+      if (
+        !grant_type || !code || !redirect_uri || !client_id || !code_verifier
+      ) {
+        return jsonResponse({
+          error: "missing_parameter",
+        }, 400);
+      }
+
       if (grant_type !== "authorization_code") {
-        return new Response(
-          JSON.stringify({ error: "unsupported_grant_type" }),
-          { status: 400, headers: jsonHeaders },
-        );
+        return jsonResponse({ error: "unsupported_grant_type" }, 400);
       }
       // client_secret is not required
       const client = clients.get(client_id);
       if (!client) {
-        return new Response(JSON.stringify({ error: "invalid_client" }), {
-          status: 400,
-          headers: jsonHeaders,
-        });
+        return jsonResponse({ error: "invalid_client" }, 401);
       }
 
       const session = authSessions.get(code);
@@ -392,22 +421,16 @@ serve({
         !session || session.expiresAt < Date.now() ||
         session.redirectUri !== redirect_uri
       ) {
-        return new Response(
-          JSON.stringify({
-            error: "invalid_grant",
-          }),
-          { status: 400, headers: jsonHeaders },
-        );
+        return jsonResponse({
+          error: "invalid_grant",
+        }, 400);
       }
 
       if (!code_verifier) {
-        return new Response(
-          JSON.stringify({
-            error: "invalid_grant",
-            error_description: "code_verifier required",
-          }),
-          { status: 400, headers: jsonHeaders },
-        );
+        return jsonResponse({
+          error: "invalid_grant",
+          error_description: "code_verifier required",
+        }, 400);
       }
 
       const method = session.codeChallengeMethod || "S256";
@@ -416,13 +439,10 @@ serve({
         : session.codeChallenge === code_verifier;
 
       if (!verified) {
-        return new Response(
-          JSON.stringify({
-            error: "invalid_grant",
-            error_description: "invalid code_verifier",
-          }),
-          { status: 400, headers: jsonHeaders },
-        );
+        return jsonResponse({
+          error: "invalid_grant",
+          error_description: "invalid code_verifier",
+        }, 400);
       }
 
       authSessions.delete(code);
@@ -430,20 +450,18 @@ serve({
       try {
         const accessToken = createAccessToken(session.userId, client_id);
         const idToken = createIdToken(session.userId, client_id);
-        return new Response(
-          JSON.stringify({
-            access_token: accessToken,
-            id_token: idToken,
-            token_type: "Bearer",
-            expires_in: config.sessionDuration,
-          }),
-          { headers: jsonHeaders },
-        );
+        return jsonResponse({
+          access_token: accessToken,
+          id_token: idToken,
+          token_type: "Bearer",
+          expires_in: config.sessionDuration,
+        });
       } catch (error) {
-        return new Response(
-          `Error in token creation: ${JSON.stringify(error)}`,
-          { status: 500 },
-        );
+        return jsonResponse({
+          error: "server_error",
+          error_description: `Error in token creation: ${JSON.stringify(error)
+            }`,
+        }, 500);
       }
     }
 
@@ -453,37 +471,25 @@ serve({
     ) {
       const authHeader = req.headers.get("Authorization");
       if (!authHeader?.startsWith("Bearer ")) {
-        return new Response(JSON.stringify({ error: "unauthorized" }), {
-          status: 401,
-          headers: jsonHeaders,
-        });
+        return jsonResponse({ error: "unauthorized" }, 401);
       }
-      const payload = verifyJWT(authHeader.substring(7));
+      const payload = verifyJWT(authHeader?.substring(7) ?? "");
       if (payload === null || !payload.sub) {
-        return new Response(JSON.stringify({ error: "invalid_token" }), {
-          status: 401,
-          headers: jsonHeaders,
-        });
+        return jsonResponse({ error: "invalid_token" }, 401);
       }
       const user = usersById.get(payload.sub);
       if (!user) {
-        return new Response(JSON.stringify({ error: "user_not_found" }), {
-          status: 404,
-          headers: jsonHeaders,
-        });
+        return jsonResponse({ error: "user_not_found" }, 404);
       }
 
-      return new Response(
-        JSON.stringify({
-          sub: user.id,
-          email: user.email,
-          name: user.username,
-        }),
-        { headers: jsonHeaders },
-      );
+      return jsonResponse({
+        sub: user.id,
+        email: user.email,
+        name: user.username,
+      });
     }
 
-    return new Response("Not found", { status: 404, headers: corsHeaders });
+    return jsonResponse({ error: "not_found" }, 404);
   },
 });
 
