@@ -7,7 +7,7 @@ meta {
 get {
   url: {{authorization_endpoint}}?client_id={{client_id}}&redirect_uri={{redirect_uri}}&code_challenge={{code_challenge}}&response_type=code&code_challenge_method=S256
   body: none
-  auth: inherit
+  auth: none
 }
 
 params:query {
@@ -20,8 +20,15 @@ params:query {
 
 script:pre-request {
   const nanoid = require('nanoid');
+  const crypto = require('crypto-js');
+  console.log(crypto);
   
-  bru.setVar("code_challenge",nanoid.nanoid(16))
+  const codeverifier = nanoid.nanoid(43);
+  const hash = crypto.SHA256(codeverifier);
+  let codechallenge = hash.toString(crypto.enc.Base64);
+  codechallenge = codechallenge.replaceAll("=", "").replaceAll("+", "-").replaceAll("/", "_")
+  
+  bru.setVar("code_challenge",codechallenge);
 }
 
 settings {

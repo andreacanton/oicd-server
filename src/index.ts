@@ -214,7 +214,6 @@ function jsonRes(body: any, status: number = 200): Response {
   });
 }
 
-
 // HTTP SERVER
 serve({
   port: config.baseUrl.port,
@@ -288,8 +287,15 @@ serve({
         }, 400);
       }
 
+      const client = clients.get(clientId);
+
+      if (!client) {
+        return jsonRes({
+          error: "invalid_client",
+        }, 400);
+      }
       if (
-        !clients.get(clientId)?.redirect_uris.includes(redirectUri)
+        !client.redirect_uris.includes(redirectUri)
       ) {
         return jsonRes({
           error: "invalid_client",
