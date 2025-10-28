@@ -223,11 +223,22 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-function jsonRes(body: any, status: number = 200): Response {
+function jsonRes(body: unknown, status: number = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json", ...corsHeaders },
   });
+}
+
+function errorRes(
+  error: string,
+  error_description: string,
+  status = 400,
+): Response {
+  return jsonRes({
+    error,
+    error_description,
+  }, status);
 }
 
 // HTTP SERVER
@@ -271,52 +282,51 @@ serve({
       const responseType = url.searchParams.get("response_type");
 
       if (responseType !== "code") {
-        return jsonRes({
-          error: "unsupported_response_type",
-          error_description:
-            "Only 'code' response_type is supported (OAuth 2.1)",
-        }, 400);
+        return errorRes(
+          "invalid_request",
+          "This server support only response_type 'code' for (OAuth 2.1)",
+        );
       }
 
       if (!clientId || !redirectUri || !codeChallenge) {
-        return jsonRes({
-          error: "missing_parameter",
-        }, 400);
+        return errorRes(
+          "invalid_request",
+          "Missing parameter",
+        );
       }
 
       if (codeChallengeMethod !== "S256") {
-        return jsonRes({
-          error: "unsupported_code_challenge_method",
-          error_description:
-            "Only S256 code_challenge_method is supported (OAuth 2.1 requirement)",
-        }, 400);
+        return errorRes(
+          "invalid_request",
+          "Only S256 code_challenge_method is supported (OAuth 2.1 requirement)",
+        );
       }
 
       // the code challenge should be of 43 chars exaclty.
       // this is explained in the RFC 7636 section 4.1
       // https://www.rfc-editor.org/rfc/rfc7636.html
       if (codeChallengeMethod === "S256" && codeChallenge.length !== 43) {
-        return jsonRes({
-          error: "invalid_code_challenge",
-          error_description:
-            "Invalid code_challenge: S256 method requires exactly 43 characters",
-        }, 400);
+        return errorRes(
+          "invalid_request",
+          "Invalid code_challenge: S256 method requires exactly 43 characters",
+        );
       }
 
       const client = clients.get(clientId);
 
       if (!client) {
-        return jsonRes({
-          error: "invalid_client",
-        }, 400);
+        return errorRes(
+          "invalid_client",
+          "Client not found",
+        );
       }
       if (
         !client.redirect_uris.includes(redirectUri)
       ) {
-        return jsonRes({
-          error: "invalid_client",
-          error_description: "Invalid client or redirect URI",
-        }, 400);
+        return errorRes(
+          "invalid_client",
+          "Invalid client or redirect URI",
+        );
       }
 
       const html = `<!DOCTYPE html>
@@ -364,9 +374,11 @@ serve({
       const user = usersByUsername.get(username);
 
       if (!user || verifyPassword(password, user.passwordHash)) {
-        return jsonRes({
-          error: "invalid_credentials",
-        }, 401);
+        return errorRes(
+          "invalid_credentials",
+          "User not found or invalid password",
+          401,
+        );
       }
 
       const code = generateCode();
