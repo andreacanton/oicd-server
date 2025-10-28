@@ -6,7 +6,6 @@ const config = {
   baseUrl: new URL("http://localhost:3000"),
   sessionDuration: 15 * 60, // 15 minutes
 } as { baseUrl: URL; sessionDuration: number };
-const salt = generateCode();
 
 // OIDC Discovery endpoint
 const wellKnownConfig = {
@@ -48,11 +47,13 @@ type User = {
   passwordHash: string;
 };
 
+const userSalt = generateCode();
+
 const user: User = {
   id: "user-1",
   username: "testuser",
   email: "test@example.com",
-  passwordHash: hashPassword("password123"),
+  passwordHash: userSalt + ":" + hashPassword("password123", userSalt),
 };
 const usersByUsername = new Map<string, User>([
   ["testuser", user],
@@ -78,8 +79,7 @@ function generateCode(): string {
 }
 
 // Password hashing
-// return the hashed password from using the salt in the configuration
-function hashPassword(password: string): string {
+function hashPassword(password: string, salt: string): string {
   const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString(
     "hex",
   );
@@ -104,6 +104,22 @@ function base64UrlDecode(encoded: string | undefined): Buffer {
 function verifySHA256(codeChallenge: string, codeVerifier: string): boolean {
   const hash = crypto.createHash("sha256").update(codeVerifier).digest();
   return codeChallenge === base64UrlEncode(hash);
+}
+
+// verify hashed password
+function verifyPassword(password: string, storedHash: string): boolean {
+  try {
+    const [salt, originalSalt] = storedHash.split(":");
+    if (!salt || !originalHash) return false;
+
+    const hashToCompare = hashPassword(password, salt);
+    return crypto.timingSafeEqual(
+      Buffer.from(hashToCompare, "hex"),
+      Buffer.from(originalHash, "hex"),
+    );
+  } catch (e) {
+    return false;
+  }
 }
 
 // JWT creation
@@ -347,7 +363,7 @@ serve({
 
       const user = usersByUsername.get(username);
 
-      if (!user || user.passwordHash !== hashPassword(password)) {
+      if (!user || verifyPassword(password, user.passwordHash)) {
         return jsonRes({
           error: "invalid_credentials",
         }, 401);
