@@ -1,5 +1,6 @@
 import { serve } from "bun";
 import * as crypto from "node:crypto";
+import { privateKey, publicKey } from "./keys.ts";
 
 // Configuration
 const config = {
@@ -19,13 +20,6 @@ const wellKnownConfig = {
   id_token_signing_alg_values_supported: ["RS256"],
   scopes_supported: ["openid", "profile", "email"],
 };
-
-// Generate RSA key pair
-const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", {
-  modulusLength: 2048,
-  publicKeyEncoding: { type: "spki", format: "pem" },
-  privateKeyEncoding: { type: "pkcs8", format: "pem" },
-});
 
 // Export public key as JWK
 const publicKeyObj = crypto.createPublicKey(publicKey);
