@@ -108,18 +108,14 @@ function verifySHA256(codeChallenge: string, codeVerifier: string): boolean {
 
 // verify hashed password
 function verifyPassword(password: string, storedHash: string): boolean {
-  try {
-    const [salt, originalSalt] = storedHash.split(":");
-    if (!salt || !originalHash) return false;
+  const [salt, originalHash] = storedHash.split(":");
+  if (!salt || !originalHash) return false;
 
-    const hashToCompare = hashPassword(password, salt);
-    return crypto.timingSafeEqual(
-      Buffer.from(hashToCompare, "hex"),
-      Buffer.from(originalHash, "hex"),
-    );
-  } catch (e) {
-    return false;
-  }
+  const hashToCompare = hashPassword(password, salt);
+  return crypto.timingSafeEqual(
+    Buffer.from(hashToCompare, "hex"),
+    Buffer.from(originalHash, "hex"),
+  );
 }
 
 // JWT creation
@@ -373,7 +369,7 @@ serve({
 
       const user = usersByUsername.get(username);
 
-      if (!user || verifyPassword(password, user.passwordHash)) {
+      if (!user || !verifyPassword(password, user.passwordHash)) {
         return errorRes(
           "invalid_credentials",
           "User not found or invalid password",
