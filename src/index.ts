@@ -213,7 +213,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-function jsonRes(body: unknown, status: number = 200): Response {
+function jsonRes(body: any, status: number = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -500,7 +500,7 @@ serve({
       if (!payload?.sub) {
         return jsonRes({ error: "invalid_token" }, 401);
       }
-      const user = usersById.get(payload.sub);
+      const user = usersById.get(payload?.sub!);
       if (!user) {
         return jsonRes({ error: "user_not_found" }, 404);
       }
