@@ -1,138 +1,149 @@
-# Simple OIDC Server
+# 📚 oicd-server: A Minimalist Educational OIDC Server
 
-A minimal OpenID Connect (OIDC) server implementation built with Bun, supporting Authorization Code Flow with PKCE (Proof Key for Code Exchange). Perfect for learning the fundamentals of OAuth 2.0 and OIDC, or for local testing and development.
+`oicd-server` is a minimal, zero-dependency OpenID Connect (OIDC) Authorization Server built from scratch using only the **Bun** runtime and standard Node.js `crypto` modules.
 
-## Features
+Its primary purpose is to provide a clear, simple, and auditable implementation of the **OAuth 2.1 (draft)**-compliant **Authorization Code Flow with PKCE**. It is designed for students, developers, and security enthusiasts who want to understand how OIDC and modern OAuth 2.0 work under the hood.
 
-- ✅ **Authorization Code Flow with PKCE** - Secure authorization for public clients
-- ✅ **Zero Dependencies** - Built using only Bun's standard library and Node.js crypto
-- ✅ **OpenID Connect Discovery** - Standard `.well-known` endpoints
-- ✅ **JWT Tokens** - RS256 signed ID tokens and access tokens
-- ✅ **JWKS Endpoint** - Public key distribution for token verification
-- ✅ **UserInfo Endpoint** - Retrieve user profile information
-- ✅ **CORS Enabled** - Ready for cross-origin requests
+## ⚠️ This is an Educational Tool
 
-## Requirements
+This server is designed exclusively for educational purposes and local development. It is **NOT** intended for production use.
 
-- [Bun](https://bun.sh) runtime (v1.0 or higher)
+It intentionally omits many production-grade features to keep the core logic simple and easy to read.
 
-## Quick Start
+**Key Limitations:**
+* **In-Memory Storage:** All users, clients, and codes are stored in memory and are lost on restart.
+* **Missing Features:** Does not include refresh tokens, user consent screens, or robust session management.
+* **Simplified Security:** Uses basic (though secure) crypto implementations. Does not include rate-limiting, comprehensive error handling, or key rotation.
 
-1. **Clone the repository**
-   ```bash
-   git clone git@github.com:andreacanton/oicd-server.git
-   cd oidc-server
-   ```
+---
 
-2. **Install dependencies**
-   ```bash
-   bun install
-   ```
+## ✨ Features
 
-3. **Run the development server**
-   ```bash
-   bun run dev
-   ```
+* ✅ **OAuth 2.1 Compliant Flow:** Implements **Authorization Code Flow with PKCE (RFC 7636)**.
+* ✅ **Zero External Dependencies:** Built entirely with the Bun runtime and Node.js `crypto`.
+* ✅ **Standard OIDC Discovery:** Provides `.well-known/openid-configuration` for auto-discovery.
+* ✅ **JSON Web Tokens (JWT):** Issues `id_token` and `access_token` signed with **RS256**.
+* ✅ **JWKS Endpoint:** Serves public keys at `.well-known/jwks.json` for token verification.
+* ✅ **Core Endpoints:** Implements `/authorize`, `/token`, and `/userinfo`.
 
-   The server will start on `http://localhost:3000` with hot-reload enabled.
+## 🚀 Quick Start
 
-## Available Scripts
+**Prerequisite:** [Bun (v1.0+)](https://bun.sh) must be installed.
 
-- `bun run dev` - Start development server with auto-reload
-- `bun run build` - Build for production
-- `bun run start` - Run production build
-- `bun test` - Run tests
-
-## Configuration
-
-The server comes pre-configured with sensible defaults in `src/index.ts`. You can modify these in the `config` object:
-
-```typescript
-const config = {
-  baseUrl: new URL("http://localhost:3000"),
-  sessionDuration: 15 * 60,  // 15 minutes in seconds
-};
+1.  **Clone the Repository**
+```bash
+git clone [https://github.com/andreacanton/oicd-server.git](https://github.com/andreacanton/oicd-server.git)
+cd oicd-server
 ```
 
-### Pre-configured Client
+2.  **Install & Run**
+```bash
+bun install
+bun run dev
+```
 
-The server includes a sample OAuth client:
+The server will start at `http://localhost:3000` with hot-reload enabled.
 
-- **Client ID**: `sample-client`
-- **Client Secret**: `sample-secret`
-- **Redirect URI**: `http://localhost:3001/callback`
+### Available Scripts
+
+| Script          | Description                                     |
+| :-------------- | :---------------------------------------------- |
+| `bun run dev`   | Starts the development server with auto-reload. |
+| `bun run build` | Creates a production-ready build.               |
+| `bun run start` | Runs the production build.                      |
+| `bun test`      | Executes all unit tests.                        |
+
+---
+
+## 🛠️ Configuration & Test Data
+
+All test data is defined in-memory in `src/index.ts`.
+
+### Test Client
+| Credential        | Value                            |
+| :---------------- | :------------------------------- |
+| **Client ID**     | `sample-client`                  |
+| **Client Secret** | `sample-secret`                  |
+| **Redirect URI**  | `http://localhost:3001/callback` |
 
 ### Test User
+| Credential   | Value              |
+| :----------- | :----------------- |
+| **Username** | `testuser`         |
+| **Password** | `password123`      |
+| **Email**    | `test@example.com` |
 
-- **Username**: `testuser`
-- **Password**: `password123`
-- **Email**: `test@example.com`
+---
 
-## OIDC Endpoints
+## 🧭 API Endpoints
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /.well-known/openid-configuration` | OpenID Connect discovery document |
-| `GET /.well-known/jwks.json` | JSON Web Key Set for token verification |
-| `GET /authorize` | Authorization endpoint (displays login form) |
-| `POST /authorize` | Process login and generate authorization code |
-| `POST /token` | Token endpoint (exchange code for tokens) |
-| `GET /userinfo` | UserInfo endpoint (requires Bearer token) |
+| Method | Path                                | Description                                                                                |
+| :----- | :---------------------------------- | :----------------------------------------------------------------------------------------- |
+| `GET`  | `/.well-known/openid-configuration` | **OIDC Discovery Document**. Provides metadata about all other endpoints.                  |
+| `GET`  | `/.well-known/jwks.json`            | **JSON Web Key Set**. Provides the public keys to verify JWT signatures.                   |
+| `GET`  | `/authorize`                        | **Authorization Endpoint**. Initiates the login flow and displays a login form.            |
+| `POST` | `/token`                            | **Token Endpoint**. Exchanges an authorization code for an `id_token` and `access_token`.  |
+| `GET`  | `/userinfo`                         | **UserInfo Endpoint**. Returns user profile information (requires a valid `access_token`). |
 
-## Authorization Flow Example
+## 🧪 Example: Full PKCE Flow
 
-### 1. Generate PKCE Challenge
+Here is how to perform a complete authorization flow manually.
 
-```javascript
-// Generate code verifier (random string)
-const codeVerifier = crypto.randomBytes(32).toString('base64url');
+### Step 1. Generate PKCE Verifier and Challenge
 
-// Create code challenge (SHA256 hash)
-const hash = crypto.createHash('sha256').update(codeVerifier).digest();
-const codeChallenge = hash.toString('base64url');
-```
+You need a `code_verifier` (a random string) and a `code_challenge` (its SHA256 hash). You can use the included Bruno collection or generate them:
 
-### 2. Initiate Authorization
+```bash
+# 1. Generate a random verifier
+CODE_VERIFIER=$(openssl rand -base64 32 | tr -d '=+/' | head -c 43)
 
-Redirect the user to:
+# 2. Generate the challenge (URL-safe SHA256)
+CODE_CHALLENGE=$(echo -n $CODE_VERIFIER | shasum -a 256 | cut -d' ' -f1 | xxd -r -p | base64 | tr -d '=+/' | tr '/+' '_-')
+
+# You can check them:
+echo $CODE_VERIFIER
+echo $CODE_CHALLENGE
+````
+
+### Step 2. Get the Authorization Code
+
+Construct the authorization URL and open it in your browser.
 
 ```
 http://localhost:3000/authorize?
-  client_id=sample-client&
-  redirect_uri=http://localhost:3001/callback&
-  response_type=code&
-  code_challenge=CODE_CHALLENGE&
-  code_challenge_method=S256&
-  state=RANDOM_STATE&
-  scope=openid profile email
+  client_id=sample-client
+  &redirect_uri=http://localhost:3001/callback
+  &response_type=code
+  &scope=openid profile email
+  &state=somerandomstate123
+  &code_challenge=YOUR_CODE_CHALLENGE
+  &code_challenge_method=S256
 ```
 
-### 3. User Login
+Log in with the test user (`testuser` / `password123`). The server will redirect you to:
 
-The user will see a login form. After successful authentication, they'll be redirected back to your `redirect_uri` with an authorization code:
+`http://localhost:3001/callback?code=AUTHORIZATION_CODE&state=somerandomstate123`
 
-```
-http://localhost:3001/callback?code=AUTHORIZATION_CODE&state=RANDOM_STATE
-```
+Copy the `AUTHORIZATION_CODE` from the URL.
 
-### 4. Exchange Code for Tokens
+### Step 3. Exchange the Code for Tokens
 
-Make a POST request to the token endpoint:
+Now, make a `POST` request to the `/token` endpoint using the `code` and your original `code_verifier`.
 
 ```bash
-curl -X POST http://localhost:3000/token \
-  -H "Content-Type: application/json" \
-  -d '{
+curl -X POST 'http://localhost:3000/token' \
+-H 'Content-Type: application/json' \
+-d '{
     "grant_type": "authorization_code",
-    "code": "AUTHORIZATION_CODE",
+    "code": "THE_AUTHORIZATION_CODE_FROM_STEP_2",
     "client_id": "sample-client",
     "client_secret": "sample-secret",
     "redirect_uri": "http://localhost:3001/callback",
-    "code_verifier": "CODE_VERIFIER"
-  }'
+    "code_verifier": "YOUR_ORIGINAL_CODE_VERIFIER_FROM_STEP_1"
+}'
 ```
 
-Response:
+The server will respond with your tokens:
 
 ```json
 {
@@ -143,16 +154,19 @@ Response:
 }
 ```
 
-### 5. Access UserInfo
+> **Note:** The `client_secret` is included here because the `sample-client` is *confidential*. A public client (like a mobile app) would omit the `client_secret`, and the server would validate the request using *only* PKCE.
 
-Use the access token to retrieve user information:
+### Step 4. Access UserInfo
+
+Use the `access_token` to retrieve user information from the `/userinfo` endpoint.
 
 ```bash
-curl http://localhost:3000/userinfo \
-  -H "Authorization: Bearer ACCESS_TOKEN"
+# Replace ACCESS_TOKEN with the one from the previous step
+curl -H 'Authorization: Bearer ACCESS_TOKEN' \
+http://localhost:3000/userinfo
 ```
 
-Response:
+The server will respond with the user's data:
 
 ```json
 {
@@ -162,177 +176,16 @@ Response:
 }
 ```
 
-## Token Structure
+## 🤝 Contributing
 
-### ID Token (JWT)
+This is an educational project, and contributions are welcome\! The primary goal is to maintain simplicity and clarity.
 
-```json
-{
-  "sub": "user-1",
-  "email": "test@example.com",
-  "name": "testuser",
-  "aud": "sample-client",
-  "iss": "http://localhost:3000",
-  "iat": 1234567890,
-  "exp": 1234568790
-}
-```
+1.  **Zero-Dependency Policy:** Please do not add any external `npm` packages.
+2.  **Clarity over Features:** Code should be easy to read and well-commented.
+3.  **Add Tests:** Please add tests for any new logic.
 
-### Access Token (JWT)
+Feel free to open an issue to discuss a potential change or submit a Pull Request.
 
-```json
-{
-  "sub": "user-1",
-  "aud": "sample-client",
-  "iss": "http://localhost:3000",
-  "iat": 1234567890,
-  "exp": 1234568790,
-  "scope": "openid profile email"
-}
-```
+## 📄 License
 
-## Testing with Bruno
-
-The project includes a Bruno collection in the `bruno-prj/` directory for testing all endpoints.
-
-### Setup
-
-1. Install [Bruno](https://www.usebruno.com/)
-2. Open the `bruno-prj` collection
-3. Select the `dev` environment
-4. Run the requests in sequence
-
-### Available Requests
-
-- **Index** - Test basic connectivity
-- **Index - OPTIONS** - Test CORS configuration
-- **Discovery - Well Known Configuration** - Get OIDC discovery document
-- **Discovery - JWKs URI** - Retrieve public keys
-- **Authorize** - Start authorization flow
-- **Userinfo** - Get user information (requires OAuth2 authentication)
-
-The collection automatically extracts endpoints from the discovery document and supports the full OAuth2 flow with PKCE.
-
-## Adding Custom Clients
-
-Edit the `clients` Map in `src/index.ts`:
-
-```typescript
-const clients = new Map([
-  ["sample-client", {
-    client_id: "sample-client",
-    client_secret: "sample-secret",
-    redirect_uris: ["http://localhost:3001/callback"],
-  }],
-  ["your-client-id", {
-    client_id: "your-client-id",
-    client_secret: "your-client-secret",
-    redirect_uris: ["http://your-app.com/callback"],
-  }],
-]);
-```
-
-## Adding Custom Users
-
-Add new users to both Maps in `src/index.ts`:
-
-```typescript
-const newUser: User = {
-  id: "user-2",
-  username: "newuser",
-  email: "newuser@example.com",
-  passwordHash: hashPassword("newpassword"),
-};
-
-usersByUsername.set("newuser", newUser);
-usersById.set("user-2", newUser);
-```
-
-## Security Features
-
-- ✅ **PKCE (RFC 7636)** - Protects against authorization code interception
-- ✅ **RS256 Signatures** - Asymmetric cryptography for token signing
-- ✅ **Password Hashing** - PBKDF2 with SHA-512
-- ✅ **Token Expiration** - Automatic expiration validation
-- ✅ **State Parameter** - CSRF protection support
-- ✅ **Redirect URI Validation** - Prevents open redirect vulnerabilities
-
-## Educational Purpose
-
-This server is designed for learning and local testing. **It is NOT production-ready**. Notable limitations:
-
-- ⚠️ In-memory storage (data lost on restart)
-- ⚠️ Single hardcoded salt for password hashing
-- ⚠️ No persistent key storage (keys regenerated on restart)
-- ⚠️ No rate limiting or brute-force protection
-- ⚠️ No refresh tokens
-- ⚠️ No session management beyond authorization codes
-- ⚠️ No admin interface for client/user management
-- ⚠️ No user registration or password reset
-- ⚠️ No scope validation
-- ⚠️ No consent screen
-
-## Use Cases
-
-- 📚 Learning OAuth 2.0 and OpenID Connect fundamentals
-- 🧪 Testing OIDC client implementations locally
-- 🔬 Understanding JWT structure and validation
-- 🎓 Educational demonstrations and workshops
-- 🛠️ Rapid prototyping without external dependencies
-- 🧩 Integration testing for applications requiring OIDC
-
-## Quick Testing
-
-Test the discovery endpoint:
-
-```bash
-curl http://localhost:3000/.well-known/openid-configuration | jq
-```
-
-Test the full flow in your browser:
-
-```
-http://localhost:3000/authorize?client_id=sample-client&redirect_uri=http://localhost:3001/callback&code_challenge=CHALLENGE&code_challenge_method=S256&response_type=code&scope=openid%20profile%20email
-```
-
-## Why Bun?
-
-This project uses Bun for:
-- ⚡ Fast startup times and excellent performance
-- 🎯 Built-in TypeScript support (no compilation needed)
-- 🌐 Native fetch API and web standards
-- 🔐 Standard Node.js crypto module
-- 🔄 Hot reload in development
-- 📦 Zero configuration needed
-
-## Resources
-
-### Official Specifications
-- [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html)
-- [OAuth 2.0 RFC 6749](https://tools.ietf.org/html/rfc6749)
-- [PKCE RFC 7636](https://tools.ietf.org/html/rfc7636)
-- [JSON Web Token (JWT) RFC 7519](https://tools.ietf.org/html/rfc7519)
-
-### Tools & Documentation
-- [Bun Documentation](https://bun.sh/docs)
-- [Bruno API Client](https://www.usebruno.com/)
-- [OpenID Connect Specs](https://openid.net/developers/specs/)
-
-## License
-
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
-
-This is free software: you are free to change and redistribute it under the terms of the GPL v3.
-
-## Contributing
-
-Contributions that maintain simplicity and zero external dependencies are welcome! Please:
-
-1. Keep the codebase dependency-free
-2. Maintain educational clarity in code
-3. Add tests for new features
-4. Update documentation accordingly
-
-## Acknowledgments
-
-This project was created as an educational tool to understand the inner workings of OpenID Connect and OAuth 2.0 authorization servers.
+This project is licensed under the **GPL-3.0**. See the [LICENSE](https://www.google.com/search?q=LICENSE) file for details.
