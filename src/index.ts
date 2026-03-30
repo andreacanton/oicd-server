@@ -6,7 +6,8 @@ import { privateKey, publicKey } from "./keys.ts";
 const config = {
   baseUrl: new URL("http://localhost:3000"),
   sessionDuration: 15 * 60, // 15 minutes
-} as { baseUrl: URL; sessionDuration: number };
+  refreshTokenDuration: 7 * 24 * 60 * 60, // 7 days
+} as { baseUrl: URL; sessionDuration: number; refreshTokenDuration: number };
 
 // OIDC Discovery endpoint
 const wellKnownConfig = {
@@ -19,6 +20,7 @@ const wellKnownConfig = {
   subject_types_supported: ["public"],
   id_token_signing_alg_values_supported: ["RS256"],
   scopes_supported: ["openid", "profile", "email"],
+  grant_types_supported: ["authorization_code", "refresh_token"],
 };
 
 // Export public key as JWK
@@ -66,6 +68,13 @@ type AuthSession = {
 };
 
 const authSessions = new Map<string, AuthSession>();
+
+type RefreshTokenEntry = {
+  userId: string;
+  clientId: string;
+  expiresAt: number;
+};
+const refreshTokens = new Map<string, RefreshTokenEntry>();
 
 // Generate a random string
 function generateCode(): string {
@@ -393,10 +402,11 @@ serve({
     if (path === wellKnownConfig.token_endpoint.pathname && method === "POST") {
       type TokenRequest = {
         grant_type: string;
-        code: string;
+        code?: string;
         client_id: string;
-        redirect_uri: string;
-        code_verifier: string;
+        redirect_uri?: string;
+        code_verifier?: string;
+        refresh_token?: string;
       };
       let tokenRequest: TokenRequest;
       if (
@@ -405,87 +415,125 @@ serve({
         const form = await req.formData();
         tokenRequest = {
           grant_type: form.get("grant_type") as string,
-          code: form.get("code") as string,
+          code: form.get("code") as string ?? undefined,
           client_id: form.get("client_id") as string,
-          redirect_uri: form.get("redirect_uri") as string,
-          code_verifier: form.get("code_verifier") as string,
+          redirect_uri: form.get("redirect_uri") as string ?? undefined,
+          code_verifier: form.get("code_verifier") as string ?? undefined,
+          refresh_token: form.get("refresh_token") as string ?? undefined,
         };
       } else {
         tokenRequest = await req.json() as TokenRequest;
       }
 
-      const {
-        grant_type,
-        code,
-        client_id,
-        redirect_uri,
-        code_verifier,
-      } = tokenRequest;
+      const { grant_type, client_id } = tokenRequest;
 
-      if (
-        !grant_type || !code || !redirect_uri || !client_id || !code_verifier
-      ) {
-        return jsonRes({
-          error: "missing_parameter",
-        }, 400);
+      if (!grant_type || !client_id) {
+        return jsonRes({ error: "missing_parameter" }, 400);
       }
 
-      if (grant_type !== "authorization_code") {
-        return jsonRes({ error: "unsupported_grant_type" }, 400);
-      }
-      // client_secret is not required
-      const client = clients.get(client_id);
-      if (!client) {
-        return jsonRes({ error: "invalid_client" }, 401);
+      if (grant_type === "authorization_code") {
+        const { code, redirect_uri, code_verifier } = tokenRequest;
+
+        if (!code || !redirect_uri || !code_verifier) {
+          return jsonRes({ error: "missing_parameter" }, 400);
+        }
+
+        // client_secret is not required
+        const client = clients.get(client_id);
+        if (!client) {
+          return jsonRes({ error: "invalid_client" }, 401);
+        }
+
+        const session = authSessions.get(code);
+        if (
+          !session || session.expiresAt < Date.now() ||
+          session.redirectUri !== redirect_uri
+        ) {
+          return jsonRes({ error: "invalid_grant" }, 400);
+        }
+
+        const pkceMethod = session.codeChallengeMethod || "S256";
+        const verified = pkceMethod === "S256"
+          ? verifySHA256(session.codeChallenge, code_verifier)
+          : session.codeChallenge === code_verifier;
+
+        if (!verified) {
+          return jsonRes({
+            error: "invalid_grant",
+            error_description: "invalid code_verifier",
+          }, 400);
+        }
+
+        authSessions.delete(code);
+
+        try {
+          const accessToken = createAccessToken(session.userId, client_id);
+          const idToken = createIdToken(session.userId, client_id);
+          const refreshToken = generateCode();
+          refreshTokens.set(refreshToken, {
+            userId: session.userId,
+            clientId: client_id,
+            expiresAt: Date.now() + config.refreshTokenDuration * 1000,
+          });
+          return jsonRes({
+            access_token: accessToken,
+            id_token: idToken,
+            token_type: "Bearer",
+            expires_in: config.sessionDuration,
+            refresh_token: refreshToken,
+          });
+        } catch (error) {
+          return jsonRes({
+            error: "server_error",
+            error_description: `Error in token creation: ${error instanceof Error ? error.message : String(error)}`,
+          }, 500);
+        }
       }
 
-      const session = authSessions.get(code);
-      if (
-        !session || session.expiresAt < Date.now() ||
-        session.redirectUri !== redirect_uri
-      ) {
-        return jsonRes({
-          error: "invalid_grant",
-        }, 400);
+      if (grant_type === "refresh_token") {
+        const { refresh_token } = tokenRequest;
+
+        if (!refresh_token) {
+          return jsonRes({ error: "missing_parameter" }, 400);
+        }
+
+        const client = clients.get(client_id);
+        if (!client) {
+          return jsonRes({ error: "invalid_client" }, 401);
+        }
+
+        const entry = refreshTokens.get(refresh_token);
+        if (!entry || entry.expiresAt < Date.now() || entry.clientId !== client_id) {
+          return jsonRes({ error: "invalid_grant" }, 400);
+        }
+
+        try {
+          const accessToken = createAccessToken(entry.userId, client_id);
+          const idToken = createIdToken(entry.userId, client_id);
+          // Token rotation: only mutate state after tokens are successfully created
+          refreshTokens.delete(refresh_token);
+          const newRefreshToken = generateCode();
+          refreshTokens.set(newRefreshToken, {
+            userId: entry.userId,
+            clientId: client_id,
+            expiresAt: Date.now() + config.refreshTokenDuration * 1000,
+          });
+          return jsonRes({
+            access_token: accessToken,
+            id_token: idToken,
+            token_type: "Bearer",
+            expires_in: config.sessionDuration,
+            refresh_token: newRefreshToken,
+          });
+        } catch (error) {
+          return jsonRes({
+            error: "server_error",
+            error_description: `Error in token creation: ${error instanceof Error ? error.message : String(error)}`,
+          }, 500);
+        }
       }
 
-      if (!code_verifier) {
-        return jsonRes({
-          error: "invalid_grant",
-          error_description: "code_verifier required",
-        }, 400);
-      }
-
-      const method = session.codeChallengeMethod || "S256";
-      const verified = method === "S256"
-        ? verifySHA256(session.codeChallenge, code_verifier)
-        : session.codeChallenge === code_verifier;
-
-      if (!verified) {
-        return jsonRes({
-          error: "invalid_grant",
-          error_description: "invalid code_verifier",
-        }, 400);
-      }
-
-      authSessions.delete(code);
-
-      try {
-        const accessToken = createAccessToken(session.userId, client_id);
-        const idToken = createIdToken(session.userId, client_id);
-        return jsonRes({
-          access_token: accessToken,
-          id_token: idToken,
-          token_type: "Bearer",
-          expires_in: config.sessionDuration,
-        });
-      } catch (error) {
-        return jsonRes({
-          error: "server_error",
-          error_description: `Error in token creation: ${JSON.stringify(error)
-            }`,
-        }, 500);
-      }
+      return jsonRes({ error: "unsupported_grant_type" }, 400);
     }
 
     // User info endpoint
