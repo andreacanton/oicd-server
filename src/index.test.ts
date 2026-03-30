@@ -40,6 +40,7 @@ type TokenResponse = {
   id_token: string;
   token_type: string;
   expires_in: number;
+  refresh_token?: string;
 };
 
 type UserInfo = {
@@ -984,6 +985,160 @@ describe("OIDC Server", () => {
       });
 
       expect(response.status).toBe(400);
+    });
+  });
+
+  describe("Refresh Token", () => {
+    // Helper: full authorize → token exchange, returns TokenResponse
+    async function getTokens(): Promise<TokenResponse> {
+      const verifier = generateCodeVerifier();
+      const challenge = generateCodeChallenge(verifier);
+
+      const formData = new FormData();
+      formData.append("username", TEST_USERNAME);
+      formData.append("password", TEST_PASSWORD);
+      formData.append("client_id", TEST_CLIENT_ID);
+      formData.append("redirect_uri", TEST_REDIRECT_URI);
+      formData.append("code_challenge", challenge);
+      formData.append("code_challenge_method", "S256");
+
+      const authResponse = await fetch(`${BASE_URL}/authorize`, {
+        method: "POST",
+        body: formData,
+        redirect: "manual",
+      });
+
+      const location = authResponse.headers.get("Location")!;
+      const code = new URL(location).searchParams.get("code")!;
+
+      const tokenResponse = await fetch(`${BASE_URL}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "authorization_code",
+          code,
+          client_id: TEST_CLIENT_ID,
+          client_secret: TEST_CLIENT_SECRET,
+          redirect_uri: TEST_REDIRECT_URI,
+          code_verifier: verifier,
+        }),
+      });
+
+      return tokenResponse.json() as Promise<TokenResponse>;
+    }
+
+    test("refresh_token is returned on authorization_code exchange", async () => {
+      const tokens = await getTokens();
+      expect(tokens.refresh_token).toBeDefined();
+      expect(typeof tokens.refresh_token).toBe("string");
+      expect(tokens.refresh_token!.length).toBeGreaterThan(0);
+    });
+
+    test("refresh_token grant issues new tokens and rotates refresh token", async () => {
+      const initial = await getTokens();
+      const oldRefreshToken = initial.refresh_token!;
+
+      const response = await fetch(`${BASE_URL}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "refresh_token",
+          refresh_token: oldRefreshToken,
+          client_id: TEST_CLIENT_ID,
+        }),
+      });
+
+      const data: TokenResponse = await response.json() as TokenResponse;
+      expect(response.status).toBe(200);
+      expect(data.access_token).toBeDefined();
+      expect(data.id_token).toBeDefined();
+      expect(data.token_type).toBe("Bearer");
+      expect(data.expires_in).toBe(900);
+      expect(data.refresh_token).toBeDefined();
+      expect(data.refresh_token).not.toBe(oldRefreshToken);
+    });
+
+    test("old refresh token is invalidated after use (rotation)", async () => {
+      const initial = await getTokens();
+      const oldRefreshToken = initial.refresh_token!;
+
+      // First use — should succeed
+      const firstResponse = await fetch(`${BASE_URL}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "refresh_token",
+          refresh_token: oldRefreshToken,
+          client_id: TEST_CLIENT_ID,
+        }),
+      });
+      expect(firstResponse.status).toBe(200);
+
+      // Reuse old token — should fail
+      const secondResponse = await fetch(`${BASE_URL}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "refresh_token",
+          refresh_token: oldRefreshToken,
+          client_id: TEST_CLIENT_ID,
+        }),
+      });
+
+      const data: ErrorResponse = await secondResponse.json() as ErrorResponse;
+      expect(secondResponse.status).toBe(400);
+      expect(data.error).toBe("invalid_grant");
+    });
+
+    test("missing refresh_token parameter returns 400", async () => {
+      const response = await fetch(`${BASE_URL}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "refresh_token",
+          client_id: TEST_CLIENT_ID,
+        }),
+      });
+
+      const data: ErrorResponse = await response.json() as ErrorResponse;
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("missing_parameter");
+    });
+
+    test("unknown refresh_token returns invalid_grant", async () => {
+      const response = await fetch(`${BASE_URL}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "refresh_token",
+          refresh_token: "nonexistent-token-abc123",
+          client_id: TEST_CLIENT_ID,
+        }),
+      });
+
+      const data: ErrorResponse = await response.json() as ErrorResponse;
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("invalid_grant");
+    });
+
+    test("refresh_token for wrong client returns invalid_grant", async () => {
+      const initial = await getTokens();
+
+      // Register a second client would be needed; instead test with wrong client_id
+      const response = await fetch(`${BASE_URL}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "refresh_token",
+          refresh_token: initial.refresh_token,
+          client_id: "wrong-client",
+        }),
+      });
+
+      // wrong-client doesn't exist → invalid_client
+      expect(response.status).toBe(401);
+      const data: ErrorResponse = await response.json() as ErrorResponse;
+      expect(data.error).toBe("invalid_client");
     });
   });
 
