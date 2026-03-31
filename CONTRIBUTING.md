@@ -36,7 +36,7 @@ See [CLAUDE.md](CLAUDE.md) for full architecture details.
 
 ### Reporting Bugs
 
-Found something broken? Open a [GitHub Issue](../../issues/new) and include:
+Found something broken? [Open a bug report](../../issues/new?template=bug_report.md) and include:
 
 - **What you expected** to happen
 - **What actually happened**
@@ -45,7 +45,7 @@ Found something broken? Open a [GitHub Issue](../../issues/new) and include:
 
 ### Suggesting Enhancements
 
-Have an idea for a new feature or improvement? Open a [GitHub Issue](../../issues/new) and:
+Have an idea for a new feature or improvement? [Open an enhancement request](../../issues/new?template=enhancement.md) and:
 
 - Describe the **use case** — what problem does it solve?
 - Explain your **proposed solution**
