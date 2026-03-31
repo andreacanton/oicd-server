@@ -1,0 +1,40 @@
+meta {
+  name: Token
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseurl}}/token
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "grant_type": "authorization_code",
+    "code": "{{auth_code}}",
+    "client_id": "{{client_id}}",
+    "redirect_uri": "{{redirect_uri}}",
+    "code_verifier": "{{code_verifier}}"
+  }
+}
+
+vars:post-response {
+  access_token: res.body.access_token
+  id_token: res.body.id_token
+  refresh_token: res.body.refresh_token
+}
+
+assert {
+  res.status: eq 200
+  res.body.access_token: isNotEmpty
+  res.body.id_token: isNotEmpty
+  res.body.token_type: eq Bearer
+  res.body.refresh_token: isNotEmpty
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

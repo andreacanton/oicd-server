@@ -1,0 +1,50 @@
+meta {
+  name: Login
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseurl}}/authorize
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  username: {{username}}
+  password: {{password}}
+  client_id: {{client_id}}
+  redirect_uri: {{redirect_uri}}
+  code_challenge: {{code_challenge}}
+  code_challenge_method: S256
+  state: teststate
+}
+
+script:pre-request {
+  const nanoid = require('nanoid');
+  const crypto = require('crypto-js');
+
+  const codeVerifier = nanoid.nanoid(43);
+  const hash = crypto.SHA256(codeVerifier);
+  let codeChallenge = hash.toString(crypto.enc.Base64);
+  codeChallenge = codeChallenge.replaceAll("=", "").replaceAll("+", "-").replaceAll("/", "_");
+
+  bru.setVar("code_verifier", codeVerifier);
+  bru.setVar("code_challenge", codeChallenge);
+}
+
+script:post-response {
+  const location = res.headers['location'] || res.headers['Location'];
+  if (location) {
+    const match = location.match(/[?&]code=([^&]+)/);
+    if (match) {
+      bru.setVar("auth_code", match[1]);
+    }
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+  maxRedirects: 0
+}
