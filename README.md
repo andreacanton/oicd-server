@@ -178,13 +178,13 @@ The server will respond with the user's data:
 
 ## 🤝 Contributing
 
-This is an educational project, and contributions are welcome\! The primary goal is to maintain simplicity and clarity.
+Contributions are welcome! Whether it's a bug report, a feature idea, or a code change — see the [Contributing Guide](CONTRIBUTING.md) for how to get started.
 
-1.  **Zero-Dependency Policy:** Please do not add any external `npm` packages.
-2.  **Clarity over Features:** Code should be easy to read and well-commented.
-3.  **Add Tests:** Please add tests for any new logic.
+The short version:
 
-Feel free to open an issue to discuss a potential change or submit a Pull Request.
+1. [Report a bug](../../issues/new?template=bug_report.md) or [suggest an enhancement](../../issues/new?template=enhancement.md)
+2. Branch from `main`, make your change, run `bun test && bun run build`
+3. Open a PR — the [PR template](.github/pull_request_template.md) will guide you
 
 ## 📄 License
 
