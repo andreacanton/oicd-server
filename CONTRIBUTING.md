@@ -1,8 +1,57 @@
 # Contributing
 
-Thank you for your interest in contributing to this OIDC server! This document describes the workflow and quality standards for all contributions.
+Welcome! This is an educational OIDC server, and contributions of all kinds are appreciated — whether it's a bug report, a feature idea, documentation improvements, or code. Every contribution helps make this a better learning resource.
 
-## Branch Workflow
+## Table of Contents
+
+- [Important Resources](#important-resources)
+- [Project Setup](#project-setup)
+- [How to Contribute](#how-to-contribute)
+  - [Reporting Bugs](#reporting-bugs)
+  - [Suggesting Enhancements](#suggesting-enhancements)
+  - [Submitting Changes](#submitting-changes)
+- [Quality Gate](#quality-gate)
+- [What to Include in a PR](#what-to-include-in-a-pr)
+- [Style Guide](#style-guide)
+- [Getting Help](#getting-help)
+- [Recognition](#recognition)
+
+## Important Resources
+
+- [README.md](README.md) — project overview and getting started
+- [CLAUDE.md](CLAUDE.md) — architecture, endpoints, and crypto details
+- [GitHub Issues](../../issues) — bug reports and feature requests
+
+## Project Setup
+
+```bash
+bun install
+bun run dev    # start dev server on port 3000
+bun test       # run test suite
+```
+
+See [CLAUDE.md](CLAUDE.md) for full architecture details.
+
+## How to Contribute
+
+### Reporting Bugs
+
+Found something broken? Open a [GitHub Issue](../../issues/new) and include:
+
+- **What you expected** to happen
+- **What actually happened**
+- **Steps to reproduce** the issue
+- Your environment (OS, Bun version)
+
+### Suggesting Enhancements
+
+Have an idea for a new feature or improvement? Open a [GitHub Issue](../../issues/new) and:
+
+- Describe the **use case** — what problem does it solve?
+- Explain your **proposed solution**
+- Label it as an enhancement if possible
+
+### Submitting Changes
 
 This project follows **GitHub Flow**. The `main` branch is protected — all changes go through pull requests.
 
@@ -44,12 +93,19 @@ bun test && bun run build
 - **Tests**: if you add or change behavior, add or update tests in `src/index.test.ts`.
 - **No unrelated changes**: avoid drive-by formatting fixes or refactors in the same PR.
 
-## Project Setup
+## Style Guide
 
-```bash
-bun install
-bun run dev    # start dev server on port 3000
-bun test       # run test suite
-```
+There is no linter configured. Follow these conventions:
 
-See [CLAUDE.md](CLAUDE.md) for full architecture details.
+- **TypeScript** — all source code is in `src/`
+- **Zero external dependencies** — use Node.js built-in `crypto` and Bun APIs only
+- **Follow existing patterns** — read `src/index.ts` and match the style you see there
+- **Keep it simple** — this is an educational project; clarity beats cleverness
+
+## Getting Help
+
+Stuck or have a question? Open a [GitHub Issue](../../issues/new) — there are no bad questions.
+
+## Recognition
+
+Contributors are acknowledged in PR merge commits. Thank you for helping improve this project!
