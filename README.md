@@ -12,7 +12,7 @@ It intentionally omits many production-grade features to keep the core logic sim
 
 **Key Limitations:**
 * **In-Memory Storage:** All users, clients, and codes are stored in memory and are lost on restart.
-* **Missing Features:** Does not include refresh tokens, user consent screens, or robust session management.
+* **Missing Features:** Does not include user consent screens or robust session management.
 * **Simplified Security:** Uses basic (though secure) crypto implementations. Does not include rate-limiting, comprehensive error handling, or key rotation.
 
 ---
@@ -24,6 +24,7 @@ It intentionally omits many production-grade features to keep the core logic sim
 * ✅ **Standard OIDC Discovery:** Provides `.well-known/openid-configuration` for auto-discovery.
 * ✅ **JSON Web Tokens (JWT):** Issues `id_token` and `access_token` signed with **RS256**.
 * ✅ **JWKS Endpoint:** Serves public keys at `.well-known/jwks.json` for token verification.
+* ✅ **Refresh Tokens:** Supports `refresh_token` grant with automatic token rotation.
 * ✅ **Core Endpoints:** Implements `/authorize`, `/token`, and `/userinfo`.
 
 ## 🚀 Quick Start
@@ -82,7 +83,7 @@ All test data is defined in-memory in `src/index.ts`.
 | `GET`  | `/.well-known/openid-configuration` | **OIDC Discovery Document**. Provides metadata about all other endpoints.                  |
 | `GET`  | `/.well-known/jwks.json`            | **JSON Web Key Set**. Provides the public keys to verify JWT signatures.                   |
 | `GET`  | `/authorize`                        | **Authorization Endpoint**. Initiates the login flow and displays a login form.            |
-| `POST` | `/token`                            | **Token Endpoint**. Exchanges an authorization code for an `id_token` and `access_token`.  |
+| `POST` | `/token`                            | **Token Endpoint**. Exchanges an authorization code or refresh token for tokens.            |
 | `GET`  | `/userinfo`                         | **UserInfo Endpoint**. Returns user profile information (requires a valid `access_token`). |
 
 ## 🧪 Example: Full PKCE Flow
@@ -150,11 +151,40 @@ The server will respond with your tokens:
   "access_token": "eyJhbGc...",
   "id_token": "eyJhbGc...",
   "token_type": "Bearer",
-  "expires_in": 900
+  "expires_in": 900,
+  "refresh_token": "a1b2c3d4..."
 }
 ```
 
 > **Note:** The `client_secret` is included here because the `sample-client` is *confidential*. A public client (like a mobile app) would omit the `client_secret`, and the server would validate the request using *only* PKCE.
+
+### Step 3.5. Refresh Your Tokens
+
+When the access token expires, use the `refresh_token` from the previous step to get new tokens without re-authenticating:
+
+```bash
+curl -X POST 'http://localhost:3000/token' \
+-H 'Content-Type: application/json' \
+-d '{
+    "grant_type": "refresh_token",
+    "client_id": "sample-client",
+    "refresh_token": "THE_REFRESH_TOKEN_FROM_STEP_3"
+}'
+```
+
+The server responds with a new set of tokens (including a rotated refresh token):
+
+```json
+{
+  "access_token": "eyJhbGc...",
+  "id_token": "eyJhbGc...",
+  "token_type": "Bearer",
+  "expires_in": 900,
+  "refresh_token": "e5f6g7h8..."
+}
+```
+
+> **Note:** Each refresh token can only be used once. The server implements **token rotation** — every refresh returns a new `refresh_token` and invalidates the old one. Refresh tokens expire after 7 days.
 
 ### Step 4. Access UserInfo
 

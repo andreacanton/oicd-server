@@ -52,6 +52,12 @@ Everything lives in `src/`:
 - PKCE: SHA-256 code challenge (S256 method)
 - Auth codes: 16-byte random hex
 
+## Git Workflow
+
+This project follows **GitHub Flow**. Never commit directly to `main`. Always create a branch and merge via Pull Request.
+
+Branch names should be flat and descriptive — no folder prefixes (e.g., `update-readme-refresh-token`, not `docs/update-readme` or `feat/refresh-token`).
+
 ## Test Notes
 
 Tests in `index.test.ts` spawn the server via `Bun.spawn`. Each `describe` block starts a fresh server instance. To run a single test file:
